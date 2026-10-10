@@ -9,7 +9,7 @@
         body { font-family: -apple-system, sans-serif; padding: 20px; background: #0f172a; color: #f8fafc; text-align: center; margin: 0; }
         .container { max-width: 400px; margin: 40px auto; background: #1e293b; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
         input[type="text"], textarea { width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 14px; box-sizing: border-box; resize: vertical; }
-        textarea { height: 50px; }
+        textarea { height: 70px; }
         button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #3b82f6; color: white; font-weight: bold; font-size: 16px; cursor: pointer; box-sizing: border-box; margin-top: 8px; }
         .copy-btn { background: #8b5cf6; }
         #result { margin-top: 20px; word-break: break-all; }
@@ -19,15 +19,12 @@
 <body>
     <div class="container">
         <h2>GIF Short-Link Generator</h2>
-        <input type="text" id="imageUrl" placeholder="Paste image link (JPG, PNG, WebP)...">
+        <input type="text" id="imageUrl" placeholder="Paste direct image link (JPG, PNG)...">
         <button onclick="convertToGif()">Convert & Get Short Link</button>
         <div id="result"></div>
     </div>
 
     <script>
-        // Your live Cloudflare Worker proxy URL:
-        const WORKER_URL = "https://cool-art-536b.eznoob-zz-q.workers.dev/";
-
         function convertToGif() {
             let url = document.getElementById('imageUrl').value.trim();
             const resultDiv = document.getElementById('result');
@@ -39,73 +36,65 @@
             
             img.onload = function() {
                 const canvas = document.createElement('canvas');
-                canvas.width = 200;
-                canvas.height = 200;
+                canvas.width = 100;
+                canvas.height = 100;
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, 200, 200);
-                const safeDataUrl = canvas.toDataURL('image/png');
+                ctx.drawImage(img, 0, 0, 100, 100);
+                const safeDataUrl = canvas.toDataURL('image/jpeg', 0.4);
 
                 gifshot.createGIF({
                     images: [safeDataUrl],
                     interval: 0.5,
-                    numFrames: 5,
+                    numFrames: 3,
                     frameDuration: 1,
-                    gifWidth: 200,
-                    gifHeight: 200
+                    gifWidth: 100,
+                    gifHeight: 100
                 }, function(obj) {
                     if(!obj.error && obj.image) {
-                        resultDiv.innerHTML = "<p>Uploading via Cloudflare proxy...</p>";
-                        uploadViaProxy(obj.image, resultDiv);
+                        resultDiv.innerHTML = "<p>Uploading to storage...</p>";
+                        uploadToPasteService(obj.image, resultDiv);
                     } else {
-                        resultDiv.innerHTML = `<p style="color: #ef4444;">Encoding failed. Try a different image link.</p>`;
+                        resultDiv.innerHTML = '<p style="color: #ef4444;">GIF encoding failed.</p>';
                     }
                 });
             };
 
             img.onerror = function() {
-                resultDiv.innerHTML = `<p style="color: #ef4444;">Could not load image. Check the direct link.</p>`;
+                resultDiv.innerHTML = '<p style="color: #ef4444;">Could not load image. Check the link.</p>';
             };
 
             img.src = url;
         }
 
-        function uploadViaProxy(dataUrl, resultDiv) {
-            fetch(dataUrl)
-                .then(res => res.blob())
-                .then(blob => {
-                    const formData = new FormData();
-                    formData.append("file", blob, "animation.gif");
-
-                    return fetch(WORKER_URL, {
-                        method: "POST",
-                        body: formData
-                    });
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.url && data.url.startsWith("http")) {
-                        resultDiv.innerHTML = `
-                            <p style="color: #34d399;"><strong>Success! Here is your short link:</strong></p>
-                            <textarea id="outputLink" readonly>${data.url}</textarea>
-                            <button class="copy-btn" onclick="copyLink()">Copy Short Link</button>
-                            <br>
-                            <img src="${data.url}" alt="Converted GIF">
-                        `;
-                    } else {
-                        throw new Error(data.error || "Upload failed");
-                    }
-                })
-                .catch(error => {
-                    resultDiv.innerHTML = `<p style="color: #ef4444;">Proxy upload error: ${error.message}</p>`;
-                });
+        function uploadToPasteService(dataUrl, resultDiv) {
+            fetch("https://paste.rs", {
+                method: "POST",
+                body: dataUrl
+            })
+            .then(function(response) { return response.text(); })
+            .then(function(textUrl) {
+                textUrl = textUrl.trim();
+                if (textUrl.startsWith("http")) {
+                    resultDiv.innerHTML = 
+                        '<p style="color: #34d399;"><strong>Success! Here is your short link:</strong></p>' +
+                        '<textarea id="outputLink" readonly>' + textUrl + '</textarea>' +
+                        '<button class="copy-btn" onclick="copyLink()">Copy Link</button>' +
+                        '<br>' +
+                        '<img src="' + textUrl + '" alt="Converted GIF">';
+                } else {
+                    throw new Error("Upload response invalid");
+                }
+            })
+            .catch(function(err) {
+                resultDiv.innerHTML = '<p style="color: #ef4444;">Error: ' + err.message + '</p>';
+            });
         }
 
         function copyLink() {
             const copyText = document.getElementById("outputLink");
             copyText.select();
-            copyText.setSelectionRange(0, 99999);
             navigator.clipboard.writeText(copyText.value);
-            alert("Short link copied to clipboard!");
+            alert("Copied to clipboard!");
         }
     </script>
 </body>
