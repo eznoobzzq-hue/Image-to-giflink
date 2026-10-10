@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GIF Short-Link Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; padding: 20px; background: #0f172a; color: #f8fafc; text-align: center; margin: 0; }
+        .container { max-width: 400px; margin: 40px auto; background: #1e293b; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        input[type="text"], textarea { width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 14px; box-sizing: border-box; resize: vertical; }
+        textarea { height: 50px; }
+        button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #3b82f6; color: white; font-weight: bold; font-size: 16px; cursor: pointer; box-sizing: border-box; margin-top: 8px; }
+        .copy-btn { background: #8b5cf6; }
+        #result { margin-top: 20px; word-break: break-all; }
+        img { max-width: 100%; border-radius: 8px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>GIF Short-Link Generator</h2>
+        <input type="text" id="imageUrl" placeholder="Paste image link (JPG, PNG, WebP)...">
+        <button onclick="convertToGif()">Convert & Get Short Link</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // Your live Cloudflare Worker proxy URL:
+        const WORKER_URL = "https://cool-art-536b.eznoob-zz-q.workers.dev/";
+
+        function convertToGif() {
+            let url = document.getElementById('imageUrl').value.trim();
+            const resultDiv = document.getElementById('result');
+            if (!url) { alert('Please enter an image URL'); return; }
+            resultDiv.innerHTML = "<p>Processing image locally...</p>";
+
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                canvas.width = 200;
+                canvas.height = 200;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, 200, 200);
+                const safeDataUrl = canvas.toDataURL('image/png');
+
+                gifshot.createGIF({
+                    images: [safeDataUrl],
+                    interval: 0.5,
+                    numFrames: 5,
+                    frameDuration: 1,
+                    gifWidth: 200,
+                    gifHeight: 200
+                }, function(obj) {
+                    if(!obj.error && obj.image) {
+                        resultDiv.innerHTML = "<p>Uploading via Cloudflare proxy...</p>";
+                        uploadViaProxy(obj.image, resultDiv);
+                    } else {
+                        resultDiv.innerHTML = `<p style="color: #ef4444;">Encoding failed. Try a different image link.</p>`;
+                    }
+                });
+            };
+
+            img.onerror = function() {
+                resultDiv.innerHTML = `<p style="color: #ef4444;">Could not load image. Check the direct link.</p>`;
+            };
+
+            img.src = url;
+        }
+
+        function uploadViaProxy(dataUrl, resultDiv) {
+            fetch(dataUrl)
+                .then(res => res.blob())
+                .then(blob => {
+                    const formData = new FormData();
+                    formData.append("file", blob, "animation.gif");
+
+                    return fetch(WORKER_URL, {
+                        method: "POST",
+                        body: formData
+                    });
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.url && data.url.startsWith("http")) {
+                        resultDiv.innerHTML = `
+                            <p style="color: #34d399;"><strong>Success! Here is your short link:</strong></p>
+                            <textarea id="outputLink" readonly>${data.url}</textarea>
+                            <button class="copy-btn" onclick="copyLink()">Copy Short Link</button>
+                            <br>
+                            <img src="${data.url}" alt="Converted GIF">
+                        `;
+                    } else {
+                        throw new Error(data.error || "Upload failed");
+                    }
+                })
+                .catch(error => {
+                    resultDiv.innerHTML = `<p style="color: #ef4444;">Proxy upload error: ${error.message}</p>`;
+                });
+        }
+
+        function copyLink() {
+            const copyText = document.getElementById("outputLink");
+            copyText.select();
+            copyText.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(copyText.value);
+            alert("Short link copied to clipboard!");
+        }
+    </script>
+</body>
+</html>
