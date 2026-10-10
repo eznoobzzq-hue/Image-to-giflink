@@ -19,58 +19,105 @@
 <body>
     <div class="container">
         <h2>GIF Short-Link Generator</h2>
-        <input type="text" id="imageUrl" placeholder="Paste any image link...">
+        <input type="text" id="imageUrl" placeholder="Paste any image or search link...">
         <button onclick="convertToGif()">Convert & Get Short Link</button>
         <div id="result"></div>
     </div>
 
     <script>
+        // Unwraps indirect search engine or redirect links (e.g., Google Images redirect parameters)
+        function normalizeInputUrl(input) {
+            input = input.trim();
+            try {
+                const parsed = new URL(input);
+                // Check if it's a Google redirect link containing an embedded imgurl parameter
+                if (parsed.searchParams.has('imgurl')) {
+                    return decodeURIComponent(parsed.searchParams.get('imgurl'));
+                }
+                // Check general 'url' or 'u' parameters commonly used in search SERPs
+                if (parsed.searchParams.has('url')) {
+                    return decodeURIComponent(parsed.searchParams.get('url'));
+                }
+            } catch (e) {
+                // Not a valid absolute URL yet, return as-is
+            }
+            return input;
+        }
+
         function convertToGif() {
-            let url = document.getElementById('imageUrl').value.trim();
+            let rawUrl = document.getElementById('imageUrl').value.trim();
             const resultDiv = document.getElementById('result');
-            if (!url) { alert('Please enter an image URL'); return; }
-            resultDiv.innerHTML = "<p>Loading image...</p>";
+            if (!rawUrl) { alert('Please enter an image URL'); return; }
 
-            // Automatically use a CORS proxy wrapper if it's a standard web URL, ensuring it never fails to load
-            const fetchUrl = url.startsWith("data:") ? url : "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
+            let cleanUrl = normalizeInputUrl(rawUrl);
+            resultDiv.innerHTML = "<p>Resolving and fetching image...</p>";
 
+            if (cleanUrl.startsWith("data:")) {
+                processImage(cleanUrl, resultDiv);
+                return;
+            }
+
+            // Tiered fetching strategy: Try direct fetch first, fallback to proxy wrappers if blocked
+            fetchImageWithFallbacks(cleanUrl, 0, resultDiv);
+        }
+
+        function fetchImageWithFallbacks(targetUrl, tier, resultDiv) {
+            // Define proxy endpoints and strategies to bypass CORS/hotlinking restrictions
+            const strategies = [
+                targetUrl, // Tier 0: Direct fetch
+                "https://api.allorigins.win/raw?url=" + encodeURIComponent(targetUrl), // Tier 1: AllOrigins Proxy
+                "https://corsproxy.io/??" + encodeURIComponent(targetUrl) // Tier 2: Corsproxy.io
+            ];
+
+            if (tier >= strategies.length) {
+                resultDiv.innerHTML = '<p style="color: #ef4444;">Could not load image. The host is heavily protected or invalid.</p>';
+                return;
+            }
+
+            const currentFetchUrl = strategies[tier];
             const img = new Image();
             img.crossOrigin = "anonymous";
-            
-            img.onload = function() {
-                const canvas = document.createElement('canvas');
-                canvas.width = 100;
-                canvas.height = 100;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, 100, 100);
-                const safeDataUrl = canvas.toDataURL('image/jpeg', 0.4);
 
-                gifshot.createGIF({
-                    images: [safeDataUrl],
-                    interval: 0.5,
-                    numFrames: 3,
-                    frameDuration: 1,
-                    gifWidth: 100,
-                    gifHeight: 100
-                }, function(obj) {
-                    if(!obj.error && obj.image) {
-                        resultDiv.innerHTML = "<p>Uploading to storage...</p>";
-                        uploadWithFallback(obj.image, resultDiv);
-                    } else {
-                        resultDiv.innerHTML = '<p style="color: #ef4444;">GIF encoding failed.</p>';
-                    }
-                });
+            img.onload = function() {
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 100;
+                    canvas.height = 100;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, 100, 100);
+                    const safeDataUrl = canvas.toDataURL('image/jpeg', 0.4);
+
+                    gifshot.createGIF({
+                        images: [safeDataUrl],
+                        interval: 0.5,
+                        numFrames: 3,
+                        frameDuration: 1,
+                        gifWidth: 100,
+                        gifHeight: 100
+                    }, function(obj) {
+                        if(!obj.error && obj.image) {
+                            resultDiv.innerHTML = "<p>Uploading to storage...</p>";
+                            uploadWithFallback(obj.image, resultDiv);
+                        } else {
+                            resultDiv.innerHTML = '<p style="color: #ef4444;">GIF encoding failed.</p>';
+                        }
+                    });
+                } catch (err) {
+                    // Canvas tainting or drawing exception -> try next tier proxy
+                    fetchImageWithFallbacks(targetUrl, tier + 1, resultDiv);
+                }
             };
 
             img.onerror = function() {
-                resultDiv.innerHTML = '<p style="color: #ef4444;">Could not load image. Try a different link.</p>';
+                // Network failure or CORS block -> try next tier proxy
+                fetchImageWithFallbacks(targetUrl, tier + 1, resultDiv);
             };
 
-            img.src = fetchUrl;
+            img.src = currentFetchUrl;
         }
 
         function uploadWithFallback(dataUrl, resultDiv) {
-            // Primary upload service: paste.rs
+            // Primary storage service: paste.rs
             fetch("https://paste.rs", {
                 method: "POST",
                 body: dataUrl
@@ -85,7 +132,7 @@
                 }
             })
             .catch(function() {
-                // Fallback upload service if primary hiccups
+                // Fallback storage service if primary hiccups
                 fetch("https://ptp.is/upload", {
                     method: "POST",
                     body: dataUrl
