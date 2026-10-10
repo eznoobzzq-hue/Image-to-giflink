@@ -1,172 +1,53 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GIF Short-Link Generator</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"></script>
-    <style>
-        body { font-family: -apple-system, sans-serif; padding: 20px; background: #0f172a; color: #f8fafc; text-align: center; margin: 0; }
-        .container { max-width: 400px; margin: 40px auto; background: #1e293b; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-        input[type="text"], textarea { width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 14px; box-sizing: border-box; resize: vertical; }
-        textarea { height: 70px; }
-        button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #3b82f6; color: white; font-weight: bold; font-size: 16px; cursor: pointer; box-sizing: border-box; margin-top: 8px; }
-        .copy-btn { background: #8b5cf6; }
-        #result { margin-top: 20px; word-break: break-all; }
-        img { max-width: 100%; border-radius: 8px; margin-top: 10px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2>GIF Short-Link Generator</h2>
-        <input type="text" id="imageUrl" placeholder="Paste any image or search link...">
-        <button onclick="convertToGif()">Convert & Get Short Link</button>
-        <div id="result"></div>
-    </div>
-
-    <script>
-        // Unwraps indirect search engine or redirect links (e.g., Google Images redirect parameters)
-        function normalizeInputUrl(input) {
-            input = input.trim();
-            try {
-                const parsed = new URL(input);
-                // Check if it's a Google redirect link containing an embedded imgurl parameter
-                if (parsed.searchParams.has('imgurl')) {
-                    return decodeURIComponent(parsed.searchParams.get('imgurl'));
-                }
-                // Check general 'url' or 'u' parameters commonly used in search SERPs
-                if (parsed.searchParams.has('url')) {
-                    return decodeURIComponent(parsed.searchParams.get('url'));
-                }
-            } catch (e) {
-                // Not a valid absolute URL yet, return as-is
-            }
-            return input;
-        }
-
-        function convertToGif() {
-            let rawUrl = document.getElementById('imageUrl').value.trim();
-            const resultDiv = document.getElementById('result');
-            if (!rawUrl) { alert('Please enter an image URL'); return; }
-
-            let cleanUrl = normalizeInputUrl(rawUrl);
-            resultDiv.innerHTML = "<p>Resolving and fetching image...</p>";
-
-            if (cleanUrl.startsWith("data:")) {
-                processImage(cleanUrl, resultDiv);
-                return;
-            }
-
-            // Tiered fetching strategy: Try direct fetch first, fallback to proxy wrappers if blocked
-            fetchImageWithFallbacks(cleanUrl, 0, resultDiv);
-        }
-
-        function fetchImageWithFallbacks(targetUrl, tier, resultDiv) {
-            // Define proxy endpoints and strategies to bypass CORS/hotlinking restrictions
-            const strategies = [
-                targetUrl, // Tier 0: Direct fetch
-                "https://api.allorigins.win/raw?url=" + encodeURIComponent(targetUrl), // Tier 1: AllOrigins Proxy
-                "https://corsproxy.io/??" + encodeURIComponent(targetUrl) // Tier 2: Corsproxy.io
-            ];
-
-            if (tier >= strategies.length) {
-                resultDiv.innerHTML = '<p style="color: #ef4444;">Could not load image. The host is heavily protected or invalid.</p>';
-                return;
-            }
-
-            const currentFetchUrl = strategies[tier];
-            const img = new Image();
-            img.crossOrigin = "anonymous";
-
-            img.onload = function() {
-                try {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 100;
-                    canvas.height = 100;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, 100, 100);
-                    const safeDataUrl = canvas.toDataURL('image/jpeg', 0.4);
-
-                    gifshot.createGIF({
-                        images: [safeDataUrl],
-                        interval: 0.5,
-                        numFrames: 3,
-                        frameDuration: 1,
-                        gifWidth: 100,
-                        gifHeight: 100
-                    }, function(obj) {
-                        if(!obj.error && obj.image) {
-                            resultDiv.innerHTML = "<p>Uploading to storage...</p>";
-                            uploadWithFallback(obj.image, resultDiv);
-                        } else {
-                            resultDiv.innerHTML = '<p style="color: #ef4444;">GIF encoding failed.</p>';
-                        }
-                    });
-                } catch (err) {
-                    // Canvas tainting or drawing exception -> try next tier proxy
-                    fetchImageWithFallbacks(targetUrl, tier + 1, resultDiv);
-                }
-            };
-
-            img.onerror = function() {
-                // Network failure or CORS block -> try next tier proxy
-                fetchImageWithFallbacks(targetUrl, tier + 1, resultDiv);
-            };
-
-            img.src = currentFetchUrl;
-        }
-
-        function uploadWithFallback(dataUrl, resultDiv) {
-            // Primary storage service: paste.rs
-            fetch("https://paste.rs", {
-                method: "POST",
-                body: dataUrl
-            })
-            .then(function(response) { return response.text(); })
-            .then(function(textUrl) {
-                textUrl = textUrl.trim();
-                if (textUrl.startsWith("http")) {
-                    showSuccess(textUrl, resultDiv);
-                } else {
-                    throw new Error("Primary upload failed");
-                }
-            })
-            .catch(function() {
-                // Fallback storage service if primary hiccups
-                fetch("https://ptp.is/upload", {
-                    method: "POST",
-                    body: dataUrl
-                })
-                .then(res => res.text())
-                .then(fallbackUrl => {
-                    fallbackUrl = fallbackUrl.trim();
-                    if (fallbackUrl.startsWith("http")) {
-                        showSuccess(fallbackUrl, resultDiv);
-                    } else {
-                        throw new Error("All upload services failed");
-                    }
-                })
-                .catch(err => {
-                    resultDiv.innerHTML = '<p style="color: #ef4444;">Upload error. Please try again.</p>';
-                });
-            });
-        }
-
-        function showSuccess(link, resultDiv) {
-            resultDiv.innerHTML = 
-                '<p style="color: #34d399;"><strong>Success! Here is your short link:</strong></p>' +
-                '<textarea id="outputLink" readonly>' + link + '</textarea>' +
-                '<button class="copy-btn" onclick="copyLink()">Copy Link</button>' +
-                '<br>' +
-                '<img src="' + link + '" alt="Converted GIF">';
-        }
-
-        function copyLink() {
-            const copyText = document.getElementById("outputLink");
-            copyText.select();
-            navigator.clipboard.writeText(copyText.value);
-            alert("Copied to clipboard!");
-        }
-    </script>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><title>Image → GIF</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#fff;--fg:#111;--card:#f2f2f5;--ac:#5865f2}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1a1e;--fg:#f2f2f2;--card:#2a2a30}}
+:root[data-theme="dark"]{--bg:#1a1a1e;--fg:#f2f2f2;--card:#2a2a30}
+body{margin:0;padding:20px;background:var(--bg);color:var(--fg);font-family:-apple-system,system-ui,sans-serif;max-width:480px;margin:auto}
+h1{font-size:24px}.card{background:var(--card);border-radius:14px;padding:16px;margin:14px 0}
+button,label.b{display:block;width:100%;box-sizing:border-box;text-align:center;background:var(--ac);color:#fff;border:0;border-radius:12px;padding:14px;font-size:16px;margin:8px 0}
+input[type=text]{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #8884;font-size:16px;background:var(--bg);color:var(--fg)}
+img{max-width:100%;border-radius:10px}small{opacity:.7}
+</style></head><body>
+<h1>Image → GIF</h1>
+<div class="card">
+<label class="b">Pick an image<input id="f" type="file" accept="image/*" hidden></label>
+<small>or try an image link (may be blocked by the site):</small>
+<input id="u" type="text" placeholder="https://...">
+<button id="go" style="background:#666">Convert link</button>
+</div>
+<div id="out" class="card" style="display:none">
+<img id="p"><button id="sh">Share / Save GIF</button>
+<a id="dl" download="image.gif"><button style="background:#666">Download</button></a>
+<small id="info"></small>
+</div>
+<script>
+const $=id=>document.getElementById(id);let blob;
+function lzw(ix){const out=[];let bb=0,bc=0;const w=(c,s)=>{bb|=c<<bc;bc+=s;while(bc>=8){out.push(bb&255);bb>>>=8;bc-=8}};
+const d=new Map();let nx=258,sz=9;w(256,sz);let pre=ix[0];
+for(let i=1;i<ix.length;i++){const k=ix[i],key=pre*256+k;
+if(d.has(key))pre=d.get(key);else{w(pre,sz);
+if(nx<4096){d.set(key,nx++);if(nx>=(1<<sz)&&sz<12)sz++}else{w(256,sz);d.clear();nx=258;sz=9}
+pre=k}}
+w(pre,sz);w(257,sz);if(bc>0)out.push(bb&255);return out}
+function gif(W,H,rgba){const ix=new Uint8Array(W*H);
+for(let i=0;i<W*H;i++){const a=rgba[i*4+3]/255;const r=rgba[i*4]*a+255*(1-a),g=rgba[i*4+1]*a+255*(1-a),b=rgba[i*4+2]*a+255*(1-a);
+ix[i]=((r>>5)<<5)|((g>>5)<<2)|(b>>6)}
+const o=[...'GIF89a'].map(c=>c.charCodeAt(0));o.push(W&255,W>>8,H&255,H>>8,0xF7,0,0);
+for(let i=0;i<256;i++)o.push(Math.round(((i>>5)&7)*255/7),Math.round(((i>>2)&7)*255/7),Math.round((i&3)*255/3));
+o.push(0x2C,0,0,0,0,W&255,W>>8,H&255,H>>8,0,8);
+const data=lzw(ix);for(let i=0;i<data.length;i+=255){const c=data.slice(i,i+255);o.push(c.length,...c)}
+o.push(0,0x3B);return new Blob([new Uint8Array(o)],{type:'image/gif'})}
+function convert(img){const s=Math.min(1,480/img.naturalWidth);const W=Math.round(img.naturalWidth*s),H=Math.round(img.naturalHeight*s);
+const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');x.drawImage(img,0,0,W,H);
+let px;try{px=x.getImageData(0,0,W,H).data}catch(e){alert("That site blocks reading its image. Save it to Photos and use the picker instead.");return}
+blob=gif(W,H,px);const url=URL.createObjectURL(blob);$('p').src=url;$('dl').href=url;
+$('info').textContent=W+'×'+H+' · '+Math.round(blob.size/1024)+' KB';$('out').style.display='block'}
+function load(src,cors){const i=new Image();if(cors)i.crossOrigin='anonymous';i.onload=()=>convert(i);i.onerror=()=>alert("Couldn't load that image. Try the picker.");i.src=src}
+$('f').onchange=e=>{const f=e.target.files[0];if(f)load(URL.createObjectURL(f))};
+$('go').onclick=()=>{const v=$('u').value.trim();if(v)load(v,true)};
+$('sh').onclick=async()=>{const f=new File([blob],'image.gif',{type:'image/gif'});
+try{if(navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f]});else $('dl').click()}catch(e){}};
+</script></body></html>
