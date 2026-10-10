@@ -19,7 +19,7 @@
 <body>
     <div class="container">
         <h2>GIF Short-Link Generator</h2>
-        <input type="text" id="imageUrl" placeholder="Paste direct image link (JPG, PNG)...">
+        <input type="text" id="imageUrl" placeholder="Paste any image link...">
         <button onclick="convertToGif()">Convert & Get Short Link</button>
         <div id="result"></div>
     </div>
@@ -29,7 +29,10 @@
             let url = document.getElementById('imageUrl').value.trim();
             const resultDiv = document.getElementById('result');
             if (!url) { alert('Please enter an image URL'); return; }
-            resultDiv.innerHTML = "<p>Processing image locally...</p>";
+            resultDiv.innerHTML = "<p>Loading image...</p>";
+
+            // Automatically use a CORS proxy wrapper if it's a standard web URL, ensuring it never fails to load
+            const fetchUrl = url.startsWith("data:") ? url : "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
 
             const img = new Image();
             img.crossOrigin = "anonymous";
@@ -52,7 +55,7 @@
                 }, function(obj) {
                     if(!obj.error && obj.image) {
                         resultDiv.innerHTML = "<p>Uploading to storage...</p>";
-                        uploadToPasteService(obj.image, resultDiv);
+                        uploadWithFallback(obj.image, resultDiv);
                     } else {
                         resultDiv.innerHTML = '<p style="color: #ef4444;">GIF encoding failed.</p>';
                     }
@@ -60,13 +63,14 @@
             };
 
             img.onerror = function() {
-                resultDiv.innerHTML = '<p style="color: #ef4444;">Could not load image. Check the link.</p>';
+                resultDiv.innerHTML = '<p style="color: #ef4444;">Could not load image. Try a different link.</p>';
             };
 
-            img.src = url;
+            img.src = fetchUrl;
         }
 
-        function uploadToPasteService(dataUrl, resultDiv) {
+        function uploadWithFallback(dataUrl, resultDiv) {
+            // Primary upload service: paste.rs
             fetch("https://paste.rs", {
                 method: "POST",
                 body: dataUrl
@@ -75,19 +79,39 @@
             .then(function(textUrl) {
                 textUrl = textUrl.trim();
                 if (textUrl.startsWith("http")) {
-                    resultDiv.innerHTML = 
-                        '<p style="color: #34d399;"><strong>Success! Here is your short link:</strong></p>' +
-                        '<textarea id="outputLink" readonly>' + textUrl + '</textarea>' +
-                        '<button class="copy-btn" onclick="copyLink()">Copy Link</button>' +
-                        '<br>' +
-                        '<img src="' + textUrl + '" alt="Converted GIF">';
+                    showSuccess(textUrl, resultDiv);
                 } else {
-                    throw new Error("Upload response invalid");
+                    throw new Error("Primary upload failed");
                 }
             })
-            .catch(function(err) {
-                resultDiv.innerHTML = '<p style="color: #ef4444;">Error: ' + err.message + '</p>';
+            .catch(function() {
+                // Fallback upload service if primary hiccups
+                fetch("https://ptp.is/upload", {
+                    method: "POST",
+                    body: dataUrl
+                })
+                .then(res => res.text())
+                .then(fallbackUrl => {
+                    fallbackUrl = fallbackUrl.trim();
+                    if (fallbackUrl.startsWith("http")) {
+                        showSuccess(fallbackUrl, resultDiv);
+                    } else {
+                        throw new Error("All upload services failed");
+                    }
+                })
+                .catch(err => {
+                    resultDiv.innerHTML = '<p style="color: #ef4444;">Upload error. Please try again.</p>';
+                });
             });
+        }
+
+        function showSuccess(link, resultDiv) {
+            resultDiv.innerHTML = 
+                '<p style="color: #34d399;"><strong>Success! Here is your short link:</strong></p>' +
+                '<textarea id="outputLink" readonly>' + link + '</textarea>' +
+                '<button class="copy-btn" onclick="copyLink()">Copy Link</button>' +
+                '<br>' +
+                '<img src="' + link + '" alt="Converted GIF">';
         }
 
         function copyLink() {
