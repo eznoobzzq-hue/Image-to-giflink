@@ -1,53 +1,380 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>Image → GIF</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<style>
-:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#fff;--fg:#111;--card:#f2f2f5;--ac:#5865f2}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1a1e;--fg:#f2f2f2;--card:#2a2a30}}
-:root[data-theme="dark"]{--bg:#1a1a1e;--fg:#f2f2f2;--card:#2a2a30}
-body{margin:0;padding:20px;background:var(--bg);color:var(--fg);font-family:-apple-system,system-ui,sans-serif;max-width:480px;margin:auto}
-h1{font-size:24px}.card{background:var(--card);border-radius:14px;padding:16px;margin:14px 0}
-button,label.b{display:block;width:100%;box-sizing:border-box;text-align:center;background:var(--ac);color:#fff;border:0;border-radius:12px;padding:14px;font-size:16px;margin:8px 0}
-input[type=text]{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #8884;font-size:16px;background:var(--bg);color:var(--fg)}
-img{max-width:100%;border-radius:10px}small{opacity:.7}
-</style></head><body>
-<h1>Image → GIF</h1>
-<div class="card">
-<label class="b">Pick an image<input id="f" type="file" accept="image/*" hidden></label>
-<small>or try an image link (may be blocked by the site):</small>
-<input id="u" type="text" placeholder="https://...">
-<button id="go" style="background:#666">Convert link</button>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local GIF Studio</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --text-color: #f8fafc;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 20px;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 450px;
+            background-color: var(--card-bg);
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+            box-sizing: border-box;
+        }
+
+        h2 { text-align: center; margin-top: 0; margin-bottom: 20px; font-size: 20px; }
+
+        .input-group { margin-bottom: 16px; }
+
+        label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #94a3b8; }
+
+        input[type="text"], input[type="file"], select {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: #0f172a;
+            color: #fff;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .media-preview-container {
+            width: 100%;
+            margin-top: 15px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+            display: none;
+            text-align: center;
+            position: relative;
+        }
+
+        video, img { max-width: 100%; max-height: 220px; display: block; margin: 0 auto; }
+
+        /* iOS Photos Style Scrubber */
+        .ios-trimmer {
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px;
+            margin-top: 16px;
+            display: none;
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #cbd5e1;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .range-slider-wrapper {
+            position: relative;
+            height: 30px;
+            margin-bottom: 10px;
+        }
+
+        .range-slider-wrapper input[type="range"] {
+            position: absolute;
+            width: 100%;
+            background: none;
+            pointer-events: none;
+            appearance: none;
+            -webkit-appearance: none;
+            margin: 0;
+            top: 5px;
+        }
+
+        .range-slider-wrapper input[type="range"]::-webkit-slider-thumb {
+            pointer-events: auto;
+            appearance: none;
+            -webkit-appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+
+        .editor-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 10px;
+            border: none;
+            background: var(--accent-blue);
+            color: white;
+            font-weight: bold;
+            font-size: 15px;
+            cursor: pointer;
+            margin-top: 16px;
+            transition: background 0.2s ease;
+        }
+
+        button:hover { background: #2563eb; }
+
+        .download-btn { background: var(--accent-purple); display: none; margin-top: 10px; }
+        .download-btn:hover { background: #7c3aed; }
+
+        #status { margin-top: 16px; text-align: center; font-size: 14px; word-break: break-all; }
+        
+        .divider {
+            text-align: center;
+            margin: 12px 0;
+            font-size: 12px;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Local GIF Studio</h2>
+    
+    <div class="input-group">
+        <label>Upload Video or Image File (Recommended for X/Protected links)</label>
+        <input type="file" id="fileInput" accept="video/*,image/*">
+    </div>
+
+    <div class="divider">— OR PASTE LINK —</div>
+
+    <div class="input-group">
+        <label>Media Link or X/Twitter Post URL</label>
+        <input type="text" id="urlInput" placeholder="Paste X, MP4, or image link...">
+    </div>
+
+    <button onclick="loadMedia()">Load Media</button>
+
+    <!-- Media Preview Box -->
+    <div id="previewContainer" class="media-preview-container">
+        <video id="videoElement" controls playsinline></video>
+        <img id="imageElement" style="display: none;">
+    </div>
+
+    <!-- iOS Photos Style Video Trimmer -->
+    <div id="iosTrimmerBox" class="ios-trimmer">
+        <div class="timeline-header">
+            <span>Trim Selection</span>
+            <span id="timeRangeDisplay">0.0s - 3.0s</span>
+        </div>
+        <div class="range-slider-wrapper">
+            <input type="range" id="startSlider" min="0" max="10" step="0.1" value="0" oninput="updateTrimRange()">
+            <input type="range" id="endSlider" min="0" max="10" step="0.1" value="3" oninput="updateTrimRange()">
+        </div>
+    </div>
+
+    <!-- Settings Editor -->
+    <div class="editor-grid">
+        <div class="input-group">
+            <label for="gifSpeed">Playback Speed</label>
+            <select id="gifSpeed">
+                <option value="0.2">0.5x (Smooth)</option>
+                <option value="0.1" selected>1.0x (Normal)</option>
+                <option value="0.05">2.0x (Fast)</option>
+            </select>
+        </div>
+        <div class="input-group">
+            <label for="gifQuality">Resolution Size</label>
+            <select id="gifQuality">
+                <option value="150">150 px (Small)</option>
+                <option value="250" selected>250 px (Medium)</option>
+                <option value="400">400 px (Large)</option>
+            </select>
+        </div>
+    </div>
+
+    <button onclick="processAndExportGif()">Generate & Download GIF</button>
+    
+    <div id="status"></div>
+    <a id="downloadAnchor" style="text-decoration: none;"><button id="downloadBtn" class="download-btn">Save GIF to Device</button></a>
 </div>
-<div id="out" class="card" style="display:none">
-<img id="p"><button id="sh">Share / Save GIF</button>
-<a id="dl" download="image.gif"><button style="background:#666">Download</button></a>
-<small id="info"></small>
-</div>
+
 <script>
-const $=id=>document.getElementById(id);let blob;
-function lzw(ix){const out=[];let bb=0,bc=0;const w=(c,s)=>{bb|=c<<bc;bc+=s;while(bc>=8){out.push(bb&255);bb>>>=8;bc-=8}};
-const d=new Map();let nx=258,sz=9;w(256,sz);let pre=ix[0];
-for(let i=1;i<ix.length;i++){const k=ix[i],key=pre*256+k;
-if(d.has(key))pre=d.get(key);else{w(pre,sz);
-if(nx<4096){d.set(key,nx++);if(nx>=(1<<sz)&&sz<12)sz++}else{w(256,sz);d.clear();nx=258;sz=9}
-pre=k}}
-w(pre,sz);w(257,sz);if(bc>0)out.push(bb&255);return out}
-function gif(W,H,rgba){const ix=new Uint8Array(W*H);
-for(let i=0;i<W*H;i++){const a=rgba[i*4+3]/255;const r=rgba[i*4]*a+255*(1-a),g=rgba[i*4+1]*a+255*(1-a),b=rgba[i*4+2]*a+255*(1-a);
-ix[i]=((r>>5)<<5)|((g>>5)<<2)|(b>>6)}
-const o=[...'GIF89a'].map(c=>c.charCodeAt(0));o.push(W&255,W>>8,H&255,H>>8,0xF7,0,0);
-for(let i=0;i<256;i++)o.push(Math.round(((i>>5)&7)*255/7),Math.round(((i>>2)&7)*255/7),Math.round((i&3)*255/3));
-o.push(0x2C,0,0,0,0,W&255,W>>8,H&255,H>>8,0,8);
-const data=lzw(ix);for(let i=0;i<data.length;i+=255){const c=data.slice(i,i+255);o.push(c.length,...c)}
-o.push(0,0x3B);return new Blob([new Uint8Array(o)],{type:'image/gif'})}
-function convert(img){const s=Math.min(1,480/img.naturalWidth);const W=Math.round(img.naturalWidth*s),H=Math.round(img.naturalHeight*s);
-const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');x.drawImage(img,0,0,W,H);
-let px;try{px=x.getImageData(0,0,W,H).data}catch(e){alert("That site blocks reading its image. Save it to Photos and use the picker instead.");return}
-blob=gif(W,H,px);const url=URL.createObjectURL(blob);$('p').src=url;$('dl').href=url;
-$('info').textContent=W+'×'+H+' · '+Math.round(blob.size/1024)+' KB';$('out').style.display='block'}
-function load(src,cors){const i=new Image();if(cors)i.crossOrigin='anonymous';i.onload=()=>convert(i);i.onerror=()=>alert("Couldn't load that image. Try the picker.");i.src=src}
-$('f').onchange=e=>{const f=e.target.files[0];if(f)load(URL.createObjectURL(f))};
-$('go').onclick=()=>{const v=$('u').value.trim();if(v)load(v,true)};
-$('sh').onclick=async()=>{const f=new File([blob],'image.gif',{type:'image/gif'});
-try{if(navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f]});else $('dl').click()}catch(e){}};
-</script></body></html>
+    let activeSourceType = null;
+    let videoDuration = 0;
+    const videoElem = document.getElementById('videoElement');
+    const imgElem = document.getElementById('imageElement');
+    const previewBox = document.getElementById('previewContainer');
+    const trimmerBox = document.getElementById('iosTrimmerBox');
+    const statusDiv = document.getElementById('status');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const downloadAnchor = document.getElementById('downloadAnchor');
+
+    async function loadMedia() {
+        const fileInput = document.getElementById('fileInput').files[0];
+        const urlInput = document.getElementById('urlInput').value.trim();
+
+        statusDiv.innerHTML = "";
+        downloadBtn.style.display = "none";
+
+        if (fileInput) {
+            const objectUrl = URL.createObjectURL(fileInput);
+            if (fileInput.type.startsWith('video/')) {
+                setupVideoPreview(objectUrl);
+            } else {
+                setupImagePreview(objectUrl);
+            }
+            return;
+        }
+
+        if (!urlInput) {
+            alert('Please select a file or paste a link.');
+            return;
+        }
+
+        statusDiv.innerHTML = "<p style='color: #3b82f6;'>Resolving media stream...</p>";
+
+        // Handle X (Twitter) links via public client-side unwrapper API
+        if (urlInput.includes("x.com") || urlInput.includes("twitter.com")) {
+            try {
+                const apiEndpoint = urlInput.replace("x.com", "api.vxtwitter.com").replace("twitter.com", "api.vxtwitter.com");
+                const res = await fetch(apiEndpoint);
+                const data = await res.json();
+                if (data.media_extended && data.media_extended.length > 0) {
+                    const directUrl = data.media_extended[0].url;
+                    setupVideoPreview("https://api.allorigins.win/raw?url=" + encodeURIComponent(directUrl));
+                    statusDiv.innerHTML = "";
+                    return;
+                }
+            } catch (e) {
+                // Fall through to standard proxy if unwrapper fails
+            }
+        }
+
+        // Standard direct media link parsing with CORS proxy fallback
+        if (urlInput.match(/\.(mp4|webm|ogg|mov)$/i) || urlInput.includes("video")) {
+            setupVideoPreview("https://api.allorigins.win/raw?url=" + encodeURIComponent(urlInput));
+            statusDiv.innerHTML = "";
+        } else {
+            setupImagePreview("https://api.allorigins.win/raw?url=" + encodeURIComponent(urlInput));
+            statusDiv.innerHTML = "";
+        }
+    }
+
+    function setupVideoPreview(src) {
+        activeSourceType = 'video';
+        imgElem.style.display = 'none';
+        videoElem.style.display = 'block';
+        previewBox.style.display = 'block';
+        trimmerBox.style.display = 'block';
+
+        videoElem.crossOrigin = "anonymous";
+        videoElem.src = src;
+        videoElem.onloadedmetadata = function() {
+            videoDuration = videoElem.duration;
+            document.getElementById('startSlider').max = videoDuration;
+            document.getElementById('endSlider').max = videoDuration;
+            document.getElementById('startSlider').value = 0;
+            document.getElementById('endSlider').value = Math.min(videoDuration, 3);
+            updateTrimRange();
+        };
+
+        videoElem.onerror = function() {
+            statusDiv.innerHTML = "<p style='color: #ef4444;'>Stream restricted by platform. Try uploading the video file directly from your device.</p>";
+        };
+    }
+
+    function setupImagePreview(src) {
+        activeSourceType = 'image';
+        videoElem.style.display = 'none';
+        imgElem.style.display = 'block';
+        previewBox.style.display = 'block';
+        trimmerBox.style.display = 'none';
+
+        imgElem.crossOrigin = "anonymous";
+        imgElem.src = src;
+    }
+
+    function updateTrimRange() {
+        let start = parseFloat(document.getElementById('startSlider').value);
+        let end = parseFloat(document.getElementById('endSlider').value);
+
+        if (start >= end) {
+            start = Math.max(0, end - 0.5);
+            document.getElementById('startSlider').value = start;
+        }
+
+        document.getElementById('timeRangeDisplay').innerText = start.toFixed(1) + 's - ' + end.toFixed(1) + 's';
+        videoElem.currentTime = start;
+    }
+
+    function processAndExportGif() {
+        if (!activeSourceType) {
+            alert('Please load a media source first!');
+            return;
+        }
+
+        statusDiv.innerHTML = "<p style='color: #3b82f6;'>Encoding frames locally...</p>";
+        downloadBtn.style.display = "none";
+
+        const dimension = parseInt(document.getElementById('gifQuality').value);
+        const speedInterval = parseFloat(document.getElementById('gifSpeed').value);
+
+        if (activeSourceType === 'video') {
+            const start = parseFloat(document.getElementById('startSlider').value);
+            const end = parseFloat(document.getElementById('endSlider').value);
+            const duration = Math.max(end - start, 0.5);
+
+            gifshot.createGIF({
+                video: [videoElem.src],
+                offset: start,
+                numFrames: Math.floor(duration * 12),
+                interval: speedInterval,
+                gifWidth: dimension,
+                gifHeight: dimension,
+                numWorkers: 2
+            }, handleGifResult);
+        } else {
+            const canvas = document.createElement('canvas');
+            canvas.width = dimension;
+            canvas.height = dimension;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(imgElem, 0, 0, dimension, dimension);
+
+            gifshot.createGIF({
+                images: [canvas.toDataURL('image/jpeg', 0.7)],
+                interval: speedInterval,
+                gifWidth: dimension,
+                gifHeight: dimension
+            }, handleGifResult);
+        }
+    }
+
+    function handleGifResult(obj) {
+        if (!obj.error && obj.image) {
+            statusDiv.innerHTML = "<p style='color: #34d399;'>GIF successfully created!</p>";
+            downloadAnchor.href = obj.image;
+            downloadAnchor.download = "local_creation.gif";
+            downloadBtn.style.display = "block";
+        } else {
+            statusDiv.innerHTML = "<p style='color: #ef4444;'>Encoding failed. Try adjusting trim or resolution.</p>";
+        }
+    }
+</script>
+
+</body>
+</html>
