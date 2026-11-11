@@ -65,7 +65,7 @@
 
         video, img { max-width: 100%; max-height: 220px; display: block; margin: 0 auto; }
 
-        /* iOS Photos Style Scrubber */
+        /* iOS Trimmer Slider Control */
         .ios-trimmer {
             background: #0f172a;
             border: 1px solid var(--border-color);
@@ -86,32 +86,33 @@
 
         .range-slider-wrapper {
             position: relative;
-            height: 30px;
-            margin-bottom: 10px;
+            height: 36px;
+            margin-bottom: 6px;
         }
 
         .range-slider-wrapper input[type="range"] {
             position: absolute;
             width: 100%;
             background: none;
-            pointer-events: none;
-            appearance: none;
-            -webkit-appearance: none;
-            margin: 0;
-            top: 5px;
-        }
-
-        .range-slider-wrapper input[type="range"]::-webkit-slider-thumb {
             pointer-events: auto;
             appearance: none;
             -webkit-appearance: none;
-            width: 22px;
-            height: 22px;
+            margin: 0;
+            top: 6px;
+            left: 0;
+            z-index: 2;
+        }
+
+        .range-slider-wrapper input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
             background: #3b82f6;
             cursor: pointer;
             border: 2px solid #fff;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
         }
 
         .editor-grid {
@@ -141,6 +142,16 @@
         .download-btn:hover { background: #7c3aed; }
 
         #status { margin-top: 16px; text-align: center; font-size: 14px; word-break: break-all; }
+
+        #outputGifContainer {
+            margin-top: 15px;
+            display: none;
+            text-align: center;
+            background: #0f172a;
+            border-radius: 12px;
+            padding: 10px;
+            border: 1px dashed var(--accent-purple);
+        }
         
         .divider {
             text-align: center;
@@ -175,15 +186,19 @@
         <img id="imageElement" style="display: none;">
     </div>
 
-    <!-- iOS Photos Style Video Trimmer -->
+    <!-- Video Trimmer -->
     <div id="iosTrimmerBox" class="ios-trimmer">
         <div class="timeline-header">
             <span>Trim Selection</span>
             <span id="timeRangeDisplay">0.0s - 3.0s</span>
         </div>
-        <div class="range-slider-wrapper">
-            <input type="range" id="startSlider" min="0" max="10" step="0.1" value="0" oninput="updateTrimRange()">
-            <input type="range" id="endSlider" min="0" max="10" step="0.1" value="3" oninput="updateTrimRange()">
+        <div class="input-group" style="margin-bottom: 8px;">
+            <label style="font-size:11px;">Start Time (s)</label>
+            <input type="range" id="startSlider" min="0" max="10" step="0.1" value="0" oninput="handleStartSlider(this.value)">
+        </div>
+        <div class="input-group" style="margin-bottom: 0;">
+            <label style="font-size:11px;">End Time (s)</label>
+            <input type="range" id="endSlider" min="0" max="10" step="0.1" value="3" oninput="handleEndSlider(this.value)">
         </div>
     </div>
 
@@ -207,29 +222,36 @@
         </div>
     </div>
 
-    <button onclick="processAndExportGif()">Generate & Download GIF</button>
+    <button onclick="processAndExportGif()">Generate GIF</button>
     
     <div id="status"></div>
-    <a id="downloadAnchor" style="text-decoration: none;"><button id="downloadBtn" class="download-btn">Save GIF to Device</button></a>
+
+    <div id="outputGifContainer">
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">Long-press image to Save to Photos</p>
+        <img id="finalGifPreview" style="max-width: 100%; border-radius: 8px;">
+        <button id="downloadBtn" class="download-btn" onclick="triggerDownload()">Save GIF to Device</button>
+    </div>
 </div>
 
 <script>
     let activeSourceType = null;
     let videoDuration = 0;
+    let generatedBlobUrl = null;
     const videoElem = document.getElementById('videoElement');
     const imgElem = document.getElementById('imageElement');
     const previewBox = document.getElementById('previewContainer');
     const trimmerBox = document.getElementById('iosTrimmerBox');
     const statusDiv = document.getElementById('status');
     const downloadBtn = document.getElementById('downloadBtn');
-    const downloadAnchor = document.getElementById('downloadAnchor');
+    const outputContainer = document.getElementById('outputGifContainer');
+    const finalGifPreview = document.getElementById('finalGifPreview');
 
     async function loadMedia() {
         const fileInput = document.getElementById('fileInput').files[0];
         const urlInput = document.getElementById('urlInput').value.trim();
 
         statusDiv.innerHTML = "";
-        downloadBtn.style.display = "none";
+        outputContainer.style.display = "none";
 
         if (fileInput) {
             const objectUrl = URL.createObjectURL(fileInput);
@@ -248,7 +270,6 @@
 
         statusDiv.innerHTML = "<p style='color: #3b82f6;'>Resolving media stream...</p>";
 
-        // Handle X (Twitter) links via public client-side unwrapper API
         if (urlInput.includes("x.com") || urlInput.includes("twitter.com")) {
             try {
                 const apiEndpoint = urlInput.replace("x.com", "api.vxtwitter.com").replace("twitter.com", "api.vxtwitter.com");
@@ -260,12 +281,9 @@
                     statusDiv.innerHTML = "";
                     return;
                 }
-            } catch (e) {
-                // Fall through to standard proxy if unwrapper fails
-            }
+            } catch (e) {}
         }
 
-        // Standard direct media link parsing with CORS proxy fallback
         if (urlInput.match(/\.(mp4|webm|ogg|mov)$/i) || urlInput.includes("video")) {
             setupVideoPreview("https://api.allorigins.win/raw?url=" + encodeURIComponent(urlInput));
             statusDiv.innerHTML = "";
@@ -285,12 +303,16 @@
         videoElem.crossOrigin = "anonymous";
         videoElem.src = src;
         videoElem.onloadedmetadata = function() {
-            videoDuration = videoElem.duration;
-            document.getElementById('startSlider').max = videoDuration;
-            document.getElementById('endSlider').max = videoDuration;
-            document.getElementById('startSlider').value = 0;
-            document.getElementById('endSlider').value = Math.min(videoDuration, 3);
-            updateTrimRange();
+            videoDuration = videoElem.duration || 10;
+            const startSlider = document.getElementById('startSlider');
+            const endSlider = document.getElementById('endSlider');
+
+            startSlider.max = videoDuration;
+            endSlider.max = videoDuration;
+            startSlider.value = 0;
+            endSlider.value = Math.min(videoDuration, 3);
+
+            updateTrimRangeDisplay();
         };
 
         videoElem.onerror = function() {
@@ -309,17 +331,36 @@
         imgElem.src = src;
     }
 
-    function updateTrimRange() {
-        let start = parseFloat(document.getElementById('startSlider').value);
+    function handleStartSlider(val) {
+        let start = parseFloat(val);
         let end = parseFloat(document.getElementById('endSlider').value);
 
         if (start >= end) {
+            end = Math.min(videoDuration, start + 0.5);
+            document.getElementById('endSlider').value = end;
+        }
+
+        videoElem.currentTime = start;
+        updateTrimRangeDisplay();
+    }
+
+    function handleEndSlider(val) {
+        let end = parseFloat(val);
+        let start = parseFloat(document.getElementById('startSlider').value);
+
+        if (end <= start) {
             start = Math.max(0, end - 0.5);
             document.getElementById('startSlider').value = start;
         }
 
+        videoElem.currentTime = end;
+        updateTrimRangeDisplay();
+    }
+
+    function updateTrimRangeDisplay() {
+        const start = parseFloat(document.getElementById('startSlider').value);
+        const end = parseFloat(document.getElementById('endSlider').value);
         document.getElementById('timeRangeDisplay').innerText = start.toFixed(1) + 's - ' + end.toFixed(1) + 's';
-        videoElem.currentTime = start;
     }
 
     function processAndExportGif() {
@@ -329,6 +370,7 @@
         }
 
         statusDiv.innerHTML = "<p style='color: #3b82f6;'>Encoding frames locally...</p>";
+        outputContainer.style.display = "none";
         downloadBtn.style.display = "none";
 
         const dimension = parseInt(document.getElementById('gifQuality').value);
@@ -342,7 +384,7 @@
             gifshot.createGIF({
                 video: [videoElem.src],
                 offset: start,
-                numFrames: Math.floor(duration * 12),
+                numFrames: Math.floor(duration * 10),
                 interval: speedInterval,
                 gifWidth: dimension,
                 gifHeight: dimension,
@@ -367,12 +409,31 @@
     function handleGifResult(obj) {
         if (!obj.error && obj.image) {
             statusDiv.innerHTML = "<p style='color: #34d399;'>GIF successfully created!</p>";
-            downloadAnchor.href = obj.image;
-            downloadAnchor.download = "local_creation.gif";
-            downloadBtn.style.display = "block";
+            
+            // Convert Base64 Data URI to Blob for iOS download compatibility
+            fetch(obj.image)
+                .then(res => res.blob())
+                .then(blob => {
+                    if (generatedBlobUrl) URL.revokeObjectURL(generatedBlobUrl);
+                    generatedBlobUrl = URL.createObjectURL(blob);
+                    
+                    finalGifPreview.src = obj.image;
+                    outputContainer.style.display = "block";
+                    downloadBtn.style.display = "block";
+                });
         } else {
-            statusDiv.innerHTML = "<p style='color: #ef4444;'>Encoding failed. Try adjusting trim or resolution.</p>";
+            statusDiv.innerHTML = "<p style='color: #ef4444;'>Encoding failed. Try adjusting trim range or resolution.</p>";
         }
+    }
+
+    function triggerDownload() {
+        if (!generatedBlobUrl) return;
+        const a = document.createElement('a');
+        a.href = generatedBlobUrl;
+        a.download = 'local_creation.gif';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
     }
 </script>
 
