@@ -1,591 +1,292 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kinetix — Local Media Studio</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"></script>
-    <style>
-        :root {
-            --bg: #07080a;
-            --surface: #12141c;
-            --surface-glass: rgba(18, 20, 28, 0.85);
-            --border: rgba(255, 255, 255, 0.08);
-            --accent: #38bdf8;
-            --accent-glow: rgba(56, 189, 248, 0.15);
-            --success: #34d399;
-            --text: #f1f5f9;
-            --text-dim: #94a3b8;
-        }
-
-        * { box-sizing: border-box; }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            padding: 24px 16px;
-            margin: 0;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            min-height: 100vh;
-            background-image: 
-                radial-gradient(circle at 10% 20%, rgba(56, 189, 248, 0.04) 0%, transparent 40%),
-                radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.03) 0%, transparent 40%);
-        }
-
-        .studio-card {
-            width: 100%;
-            max-width: 440px;
-            background-color: var(--surface-glass);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            padding: 28px;
-            border-radius: 24px;
-            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 24px;
-        }
-
-        .header h1 {
-            font-size: 20px;
-            font-weight: 700;
-            letter-spacing: -0.025em;
-            margin: 0 0 6px 0;
-            background: linear-gradient(135deg, #fff 30%, var(--text-dim));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .header p {
-            font-size: 12px;
-            color: var(--text-dim);
-            margin: 0;
-        }
-
-        .input-group {
-            margin-bottom: 18px;
-        }
-
-        label {
-            display: block;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 8px;
-            color: var(--text-dim);
-        }
-
-        .file-drop {
-            position: relative;
-            border: 1px dashed var(--border);
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 12px;
-            padding: 14px;
-            text-align: center;
-            transition: all 0.2s ease;
-        }
-
-        .file-drop:hover {
-            border-color: var(--accent);
-            background: var(--accent-glow);
-        }
-
-        input[type="file"] {
-            width: 100%;
-            opacity: 0;
-            position: absolute;
-            top: 0; left: 0; bottom: 0; right: 0;
-            cursor: pointer;
-        }
-
-        .file-drop-text {
-            font-size: 13px;
-            color: var(--text);
-            font-weight: 500;
-            pointer-events: none;
-        }
-
-        input[type="text"], select {
-            width: 100%;
-            padding: 12px 14px;
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            background: rgba(0, 0, 0, 0.3);
-            color: var(--text);
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-
-        input[type="text"]:focus, select:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-glow);
-        }
-
-        .divider {
-            display: flex;
-            align-items: center;
-            text-align: center;
-            margin: 16px 0;
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: var(--text-dim);
-        }
-
-        .divider::before, .divider::after {
-            content: '';
-            flex: 1;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .divider::before { margin-right: 12px; }
-        .divider::after { margin-left: 12px; }
-
-        .btn-primary {
-            width: 100%;
-            padding: 13px;
-            border-radius: 12px;
-            border: none;
-            background: linear-gradient(135deg, #38bdf8, #0284c7);
-            color: #0f172a;
-            font-weight: 700;
-            font-size: 14px;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.25);
-            transition: transform 0.1s ease, opacity 0.2s;
-        }
-
-        .btn-primary:active { transform: scale(0.98); }
-        .btn-primary:hover { opacity: 0.92; }
-
-        .media-preview-container {
-            width: 100%;
-            margin-top: 18px;
-            border-radius: 14px;
-            overflow: hidden;
-            background: #000;
-            border: 1px solid var(--border);
-            display: none;
-            text-align: center;
-        }
-
-        video, img {
-            width: 100%;
-            max-height: 240px;
-            object-fit: contain;
-            display: block;
-            margin: 0 auto;
-        }
-
-        .trimmer-box {
-            background: rgba(0, 0, 0, 0.25);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 16px;
-            margin-top: 16px;
-            display: none;
-        }
-
-        .timeline-header {
-            display: flex;
-            justify-content: space-between;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-dim);
-            margin-bottom: 10px;
-            font-weight: 600;
-        }
-
-        .slider-group {
-            margin-bottom: 10px;
-        }
-        .slider-group:last-child { margin-bottom: 0; }
-
-        .slider-group label {
-            font-size: 10px;
-            margin-bottom: 4px;
-        }
-
-        input[type="range"] {
-            width: 100%;
-            accent-color: var(--accent);
-            cursor: pointer;
-        }
-
-        .editor-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-top: 16px;
-        }
-
-        #status {
-            margin-top: 16px;
-            text-align: center;
-            font-size: 13px;
-            font-weight: 500;
-            word-break: break-all;
-        }
-
-        .output-box {
-            margin-top: 18px;
-            display: none;
-            text-align: center;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 14px;
-            padding: 14px;
-            border: 1px solid rgba(52, 211, 153, 0.3);
-        }
-
-        .btn-download {
-            background: linear-gradient(135deg, #34d399, #059669);
-            color: #064e3b;
-            margin-top: 12px;
-            box-shadow: 0 4px 12px rgba(52, 211, 153, 0.25);
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Obsidian Clip Studio</title>
+<style>
+:root{--bg:#0b0c10;--glass:rgba(255,255,255,.05);--line:rgba(255,255,255,.1);--txt:#e8eaf0;--mute:#8b90a0;--a:#7c5cff;--b:#22d3ee}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--txt);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;
+background:radial-gradient(900px 500px at 10% -10%,rgba(124,92,255,.25),transparent),radial-gradient(800px 500px at 100% 0,rgba(34,211,238,.15),transparent),var(--bg);
+padding:calc(16px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom))}
+.wrap{max-width:880px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:4px 0 0;letter-spacing:-.3px}
+h1 span{background:linear-gradient(90deg,var(--a),var(--b));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mute);margin:0;font-size:13px}
+.card{background:var(--glass);border:1px solid var(--line);border-radius:18px;padding:16px;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+.card h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--mute);margin:0 0 12px;font-weight:600}
+.drop{border:1.5px dashed rgba(255,255,255,.2);border-radius:14px;padding:28px 12px;text-align:center;cursor:pointer;transition:.2s}
+.drop.over,.drop:hover{border-color:var(--b);background:rgba(34,211,238,.06)}
+.drop b{display:block;font-size:16px}.drop small{color:var(--mute)}
+.row{display:flex;gap:8px;margin-top:12px}
+input[type=url],select{width:100%;background:rgba(0,0,0,.35);color:var(--txt);border:1px solid var(--line);border-radius:12px;padding:11px 12px;font:inherit;outline:none}
+input[type=url]:focus,select:focus{border-color:var(--a)}
+button{border:0;border-radius:12px;padding:11px 16px;font:inherit;font-weight:600;color:#fff;cursor:pointer;background:linear-gradient(135deg,var(--a),var(--b));white-space:nowrap}
+button.ghost{background:var(--glass);border:1px solid var(--line)}
+button:disabled{opacity:.5}
+.stage{background:#000;border-radius:14px;overflow:hidden;display:flex;justify-content:center}
+video,#imgPrev{max-width:100%;max-height:48vh;display:block}
+.hidden{display:none!important}
+.sl{margin-top:14px}
+.sl label{display:flex;justify-content:space-between;color:var(--mute);font-size:13px}
+.sl label em{color:var(--txt);font-style:normal;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--a);margin:6px 0 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.grid label{font-size:13px;color:var(--mute);display:block;margin-bottom:5px}
+.bar{height:6px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:12px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--a),var(--b));transition:width .15s}
+#status{color:var(--mute);font-size:13px;margin-top:8px;min-height:20px}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.85);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);z-index:9;overflow:auto;padding:20px;text-align:center}
+#modal img{max-width:100%;border-radius:12px;-webkit-touch-callout:default}
+#modal p{color:var(--mute)}
+</style>
 </head>
 <body>
+<div class="wrap">
+  <div><h1><span>Obsidian</span> Clip Studio</h1><p class="sub">Trim video, export GIF · WebP · PNG · JPEG. Everything runs in your browser.</p></div>
 
-<div class="studio-card">
-    <div class="header">
-        <h1>Kinetix Studio</h1>
-        <p>High-Framerate Client-Side Studio</p>
+  <div class="card">
+    <h2>1 · Source</h2>
+    <div class="drop" id="drop"><b>Drop a video or image here</b><small>or tap to browse · .mp4 .mov .webm · images</small></div>
+    <input id="file" type="file" accept="video/*,image/*,.mp4,.mov,.webm" hidden>
+    <div class="row"><input id="url" type="url" placeholder="Direct media link (https://…/clip.mp4)"><button id="loadUrl" class="ghost">Load</button></div>
+  </div>
+
+  <div class="card hidden" id="editor">
+    <h2>2 · Preview &amp; Trim</h2>
+    <div class="stage"><video id="vid" playsinline muted controls preload="auto" crossorigin="anonymous"></video><img id="imgPrev" class="hidden" alt=""></div>
+    <div id="trim">
+      <div class="sl"><label>Start <em id="sv">0.00s</em></label><input id="start" type="range" min="0" max="1" step="0.01" value="0"></div>
+      <div class="sl"><label>End <em id="ev">0.00s</em></label><input id="end" type="range" min="0" max="1" step="0.01" value="1"></div>
+      <p class="sub" id="dur" style="margin-top:8px"></p>
     </div>
-    
-    <div class="input-group">
-        <label>Source Video / Image</label>
-        <div class="file-drop">
-            <span class="file-drop-text" id="fileNameDisplay">Tap to choose file...</span>
-            <input type="file" id="fileInput" accept="video/*,image/*" onchange="updateFileLabel(this)">
-        </div>
+  </div>
+
+  <div class="card hidden" id="export">
+    <h2>3 · Export</h2>
+    <div class="grid">
+      <div><label>Format</label><select id="fmt"><option value="gif">Animated GIF</option><option value="webp">Animated WebP</option><option value="png">Frame PNG</option><option value="jpeg">Frame JPEG</option></select></div>
+      <div id="fpsBox"><label>Framerate</label><select id="fps"><option value="24">Smooth · 24 FPS</option><option value="30">Fluid · 30 FPS</option><option value="40">Ultra · 40 FPS</option></select></div>
+      <div><label>Resolution</label><select id="res"><option value="0">Original (Native Sharpness)</option><option value="720">720px wide</option><option value="500">500px wide</option></select></div>
     </div>
-
-    <div class="divider">Or Remote Link</div>
-
-    <div class="input-group">
-        <label>Media URL or X/Twitter Post</label>
-        <input type="text" id="urlInput" placeholder="https://x.com/... or direct .mp4">
-    </div>
-
-    <button class="btn-primary" onclick="loadMedia()">Initialize Stream</button>
-
-    <!-- Preview Box -->
-    <div id="previewContainer" class="media-preview-container">
-        <video id="videoElement" controls playsinline></video>
-        <img id="imageElement" style="display: none;">
-    </div>
-
-    <!-- Trimmer -->
-    <div id="trimmerBox" class="trimmer-box">
-        <div class="timeline-header">
-            <span>Frame Trimmer</span>
-            <span id="timeRangeDisplay" style="color: var(--accent);">0.0s - 3.0s</span>
-        </div>
-        <div class="slider-group">
-            <label>Start Point</label>
-            <input type="range" id="startSlider" min="0" max="10" step="0.1" value="0" oninput="handleStartSlider(this.value)">
-        </div>
-        <div class="slider-group">
-            <label>End Point</label>
-            <input type="range" id="endSlider" min="0" max="10" step="0.1" value="3" oninput="handleEndSlider(this.value)">
-        </div>
-    </div>
-
-    <!-- Settings -->
-    <div class="editor-grid">
-        <div class="input-group">
-            <label for="exportFormat">Output Format</label>
-            <select id="exportFormat">
-                <option value="gif" selected>Animated GIF</option>
-                <option value="webp">Animated WebP</option>
-                <option value="png">Frame PNG</option>
-                <option value="jpg">Frame JPEG</option>
-            </select>
-        </div>
-        <div class="input-group">
-            <label for="fpsSelector">Framerate (FPS)</label>
-            <select id="fpsSelector">
-                <option value="0.04">Smooth (24 FPS)</option>
-                <option value="0.033" selected>Fluid (30 FPS)</option>
-                <option value="0.025">Ultra (40 FPS)</option>
-            </select>
-        </div>
-    </div>
-
-    <div class="input-group" style="margin-top: 12px;">
-        <label for="gifQuality">Resolution Quality</label>
-        <select id="gifQuality">
-            <option value="original" selected>Original (Native Sharpness)</option>
-            <option value="500">High (500px)</option>
-            <option value="720">Ultra HD (720px)</option>
-        </select>
-    </div>
-
-    <button class="btn-primary" style="margin-top: 8px;" onclick="processAndExportMedia()">Compile & Export</button>
-    
-    <div id="status"></div>
-
-    <div id="outputContainer" class="output-box">
-        <p style="font-size: 11px; color: var(--text-dim); margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em;" id="outputLabel">Preview — Long-press to Save</p>
-        <img id="finalGifPreview" style="max-width: 100%; border-radius: 10px; margin-bottom: 8px;">
-        <button class="btn-primary btn-download" onclick="triggerDownload()">Open Standalone Export</button>
-    </div>
+    <div class="row"><button id="go" style="width:100%">Compile &amp; Export</button></div>
+    <div class="bar"><i id="prog"></i></div><div id="status"></div>
+  </div>
 </div>
 
+<div id="modal" class="hidden"></div>
+
 <script>
-    let activeSourceType = null;
-    let videoDuration = 0;
-    let savedOutputData = null;
-    let currentMimeType = "image/gif";
-    const videoElem = document.getElementById('videoElement');
-    const imgElem = document.getElementById('imageElement');
-    const previewBox = document.getElementById('previewContainer');
-    const trimmerBox = document.getElementById('trimmerBox');
-    const statusDiv = document.getElementById('status');
-    const outputContainer = document.getElementById('outputContainer');
-    const finalGifPreview = document.getElementById('finalGifPreview');
+const $=id=>document.getElementById(id);
+const vid=$('vid'),img=$('imgPrev');
+let mode=null; // 'video' | 'image'
+let objUrl=null;
 
-    function updateFileLabel(input) {
-        if (input.files && input.files[0]) {
-            document.getElementById('fileNameDisplay').innerText = input.files[0].name;
-        }
+/* ---------- Ingestion ---------- */
+const drop=$('drop'),file=$('file');
+drop.onclick=()=>file.click();
+file.onchange=()=>file.files[0]&&loadFile(file.files[0]);
+['dragover','dragenter'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over')}));
+drop.addEventListener('drop',ev=>{const f=ev.dataTransfer.files[0];f&&loadFile(f)});
+
+function loadFile(f){
+  if(objUrl)URL.revokeObjectURL(objUrl);
+  objUrl=URL.createObjectURL(f);
+  const isImg=f.type.startsWith('image/');
+  setSource(objUrl,isImg?'image':'video');
+}
+$('loadUrl').onclick=()=>{
+  const u=$('url').value.trim(); if(!u)return;
+  const isImg=/\.(png|jpe?g|gif|webp|avif|bmp)(\?|#|$)/i.test(u);
+  setSource(u,isImg?'image':'video');
+};
+function setSource(src,type){
+  mode=type; $('editor').classList.remove('hidden'); $('export').classList.remove('hidden');
+  const v=type==='video';
+  vid.classList.toggle('hidden',!v); img.classList.toggle('hidden',v); $('trim').classList.toggle('hidden',!v);
+  $('fpsBox').classList.toggle('hidden',!v);
+  const f=$('fmt'); [...f.options].forEach(o=>{if(v)o.disabled=false;else o.disabled=(o.value==='gif'||o.value==='webp')});
+  if(!v&&(f.value==='gif'||f.value==='webp'))f.value='png';
+  setStatus('');prog(0);
+  if(v){vid.pause();vid.src=src;vid.load();}
+  else{img.crossOrigin='anonymous';img.src=src;}
+}
+img.onerror=vid.onerror=()=>setStatus('Could not load this media. For links, the host must allow cross-origin (CORS) access.');
+vid.onloadedmetadata=()=>{
+  const d=vid.duration||0;
+  [$('start'),$('end')].forEach(s=>{s.max=d;});
+  $('start').value=0;$('end').value=Math.min(d,5)||d;
+  syncLabels();vid.currentTime=0;
+  $('dur').textContent=`Source: ${vid.videoWidth}×${vid.videoHeight} · ${d.toFixed(2)}s`;
+};
+
+/* ---------- Trimmer ---------- */
+const GAP=0.05;
+function syncLabels(){$('sv').textContent=(+$('start').value).toFixed(2)+'s';$('ev').textContent=(+$('end').value).toFixed(2)+'s';
+  const l=$('end').value-$('start').value;$('sv').title=`Clip length ${l.toFixed(2)}s`;}
+$('start').oninput=()=>{
+  let s=+$('start').value,e=+$('end').value;
+  if(s>e-GAP){s=Math.max(0,e-GAP);$('start').value=s;}
+  syncLabels();vid.pause();vid.currentTime=s;
+};
+$('end').oninput=()=>{
+  let s=+$('start').value,e=+$('end').value;
+  if(e<s+GAP){e=Math.min(+$('end').max,s+GAP);$('end').value=e;}
+  syncLabels();vid.pause();vid.currentTime=e;
+};
+
+/* ---------- Helpers ---------- */
+function setStatus(t){$('status').textContent=t}
+function prog(p){$('prog').style.width=(p*100)+'%'}
+const raf=()=>new Promise(r=>requestAnimationFrame(r));
+function seek(t){return new Promise(res=>{
+  if(Math.abs(vid.currentTime-t)<0.001){raf().then(res);return;}
+  const h=()=>{vid.removeEventListener('seeked',h);raf().then(res)};
+  vid.addEventListener('seeked',h);vid.currentTime=t;
+});}
+function dims(){
+  const sw=mode==='video'?vid.videoWidth:img.naturalWidth, sh=mode==='video'?vid.videoHeight:img.naturalHeight;
+  const target=+$('res').value;
+  const w=target?Math.min(target,sw):sw; // keepAspectRatio
+  return {w,h:Math.round(w*sh/sw)};
+}
+const src=()=>mode==='video'?vid:img;
+
+/* ---------- GIF encoder (216-colour palette + Floyd–Steinberg) ---------- */
+function quantize(data,w,h){
+  const f=new Float32Array(data.length);for(let i=0;i<data.length;i++)f[i]=data[i];
+  const out=new Uint8Array(w*h);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const p=(y*w+x)*4,q=[0,0,0],lv=[0,0,0];
+    for(let c=0;c<3;c++){const v=Math.max(0,Math.min(255,f[p+c]));const l=Math.round(v/51);lv[c]=l;q[c]=v-l*51;}
+    out[y*w+x]=lv[0]*36+lv[1]*6+lv[2];
+    const sp=(dx,dy,k)=>{const xx=x+dx,yy=y+dy;if(xx<0||xx>=w||yy>=h)return;const pp=(yy*w+xx)*4;for(let c=0;c<3;c++)f[pp+c]+=q[c]*k;};
+    sp(1,0,7/16);sp(-1,1,3/16);sp(0,1,5/16);sp(1,1,1/16);
+  }
+  return out;
+}
+function lzw(idx){
+  const out=[];let cur=0,bits=0,size=9,next=258,dict=new Map();
+  const emit=c=>{cur|=c<<bits;bits+=size;while(bits>=8){out.push(cur&255);cur>>=8;bits-=8;}};
+  emit(256);let pre=idx[0];
+  for(let i=1;i<idx.length;i++){
+    const k=idx[i],key=pre*256+k,g=dict.get(key);
+    if(g!==undefined){pre=g;continue;}
+    emit(pre);dict.set(key,next++);
+    if(next-1===(1<<size)&&size<12)size++;
+    if(next===4096){emit(256);dict.clear();next=258;size=9;}
+    pre=k;
+  }
+  emit(pre);emit(257);if(bits>0)out.push(cur&255);
+  return out;
+}
+function encodeGIF(frames,w,h,delays){
+  const b=[];const w16=n=>b.push(n&255,n>>8&255);
+  [..."GIF89a"].forEach(c=>b.push(c.charCodeAt(0)));
+  w16(w);w16(h);b.push(0xF7,0,0);
+  for(let r=0;r<6;r++)for(let g=0;g<6;g++)for(let bl=0;bl<6;bl++)b.push(r*51,g*51,bl*51);
+  for(let i=216;i<256;i++)b.push(0,0,0);
+  b.push(0x21,0xFF,11,..."NETSCAPE2.0".split('').map(c=>c.charCodeAt(0)),3,1,0,0,0);
+  frames.forEach((fr,i)=>{
+    b.push(0x21,0xF9,4,0,delays[i]&255,delays[i]>>8,0,0);
+    b.push(0x2C);w16(0);w16(0);w16(w);w16(h);b.push(0,8);
+    const d=lzw(fr);for(let p=0;p<d.length;p+=255){const n=Math.min(255,d.length-p);b.push(n);for(let j=0;j<n;j++)b.push(d[p+j]);}
+    b.push(0);
+  });
+  b.push(0x3B);
+  return new Blob([new Uint8Array(b)],{type:'image/gif'});
+}
+
+/* ---------- Animated WebP muxer ---------- */
+const u24=n=>[n&255,n>>8&255,n>>16&255],u32=n=>[n&255,n>>8&255,n>>16&255,n>>24&255];
+const tag=s=>[...s].map(c=>c.charCodeAt(0));
+function chunk(t,data){const a=[...tag(t),...u32(data.length),...data];if(data.length&1)a.push(0);return a;}
+async function encodeWebP(canvases,w,h,delays){
+  const parts=[];
+  for(let i=0;i<canvases.length;i++){
+    const blob=await new Promise(r=>canvases[i].toBlob(r,'image/webp',0.92));
+    if(!blob||blob.type!=='image/webp')throw new Error('This browser cannot encode WebP. Try Chrome, Edge or Firefox, or choose GIF.');
+    const buf=new Uint8Array(await blob.arrayBuffer());
+    let off=12,inner=[];
+    while(off<buf.length){
+      const t=String.fromCharCode(...buf.slice(off,off+4));
+      const len=buf[off+4]|buf[off+5]<<8|buf[off+6]<<16|buf[off+7]<<24;
+      const total=8+len+(len&1);
+      if(t!=='VP8X')inner.push(...buf.slice(off,off+total));
+      off+=total;
     }
+    parts.push(chunk('ANMF',[...u24(0),...u24(0),...u24(w-1),...u24(h-1),...u24(delays[i]),0,...inner]));
+  }
+  const body=[...tag('WEBP'),...chunk('VP8X',[0x12,0,0,0,...u24(w-1),...u24(h-1)]),...chunk('ANIM',[255,255,255,255,0,0])];
+  const all=[...tag('RIFF'),...u32(0),...body];
+  const bytes=new Uint8Array(all.length+parts.reduce((s,p)=>s+p.length,0));
+  bytes.set(all);let o=all.length;parts.forEach(p=>{bytes.set(p,o);o+=p.length;});
+  new DataView(bytes.buffer).setUint32(4,bytes.length-8,true);
+  return new Blob([bytes],{type:'image/webp'});
+}
 
-    async function loadMedia() {
-        const fileInput = document.getElementById('fileInput').files[0];
-        const urlInput = document.getElementById('urlInput').value.trim();
+/* ---------- Export ---------- */
+function openWindow(){let w=null;try{w=window.open('','_blank');}catch(e){}
+  if(w){w.document.write('<body style="background:#0b0c10;color:#8b90a0;font:16px -apple-system,sans-serif;text-align:center;padding:40px">Compiling…</body>');}
+  return w;}
+function showResult(win,blob,name){
+  const fr=new FileReader();
+  fr.onload=()=>{
+    const url=fr.result;
+    const html=`<meta name="viewport" content="width=device-width,initial-scale=1"><title>${name}</title>
+<body style="margin:0;background:#0b0c10;color:#e8eaf0;font:15px -apple-system,sans-serif;text-align:center;padding:20px">
+<p style="color:#22d3ee;font-weight:600">Your export is ready</p>
+<img src="${url}" style="max-width:100%;border-radius:12px;-webkit-touch-callout:default" alt="${name}">
+<p style="color:#8b90a0">📱 Long-press the image → <b>Save to Photos</b> / <b>Save to Files</b><br>
+🖥 Desktop: <a style="color:#7c5cff" href="${url}" download="${name}">Download file</a></p></body>`;
+    if(win&&!win.closed){win.document.open();win.document.write(html);win.document.close();}
+    else{const m=$('modal');m.classList.remove('hidden');
+      m.innerHTML=`<p style="color:#22d3ee;font-weight:600">Your export is ready</p><img src="${url}" alt=""><p>Long-press the image → Save to Photos / Files<br><a style="color:#7c5cff" href="${url}" download="${name}">Download file</a></p><button id="cl" class="ghost">Close</button>`;
+      $('cl').onclick=()=>m.classList.add('hidden');}
+    setStatus(`Done · ${(blob.size/1024).toFixed(0)} KB`);prog(1);$('go').disabled=false;
+  };
+  fr.readAsDataURL(blob);
+}
 
-        statusDiv.innerHTML = "";
-        outputContainer.style.display = "none";
-
-        if (fileInput) {
-            const objectUrl = URL.createObjectURL(fileInput);
-            if (fileInput.type.startsWith('video/')) {
-                setupVideoPreview(objectUrl);
-            } else {
-                setupImagePreview(objectUrl);
-            }
-            return;
-        }
-
-        if (!urlInput) {
-            alert('Please select a file or paste a link.');
-            return;
-        }
-
-        statusDiv.innerHTML = "<span style='color: var(--accent);'>Resolving secure stream...</span>";
-
-        if (urlInput.includes("x.com") || urlInput.includes("twitter.com")) {
-            try {
-                const apiEndpoint = urlInput.replace("x.com", "api.vxtwitter.com").replace("twitter.com", "api.vxtwitter.com");
-                const res = await fetch(apiEndpoint);
-                const data = await res.json();
-                if (data.media_extended && data.media_extended.length > 0) {
-                    const directUrl = data.media_extended[0].url;
-                    setupVideoPreview("https://api.allorigins.win/raw?url=" + encodeURIComponent(directUrl));
-                    statusDiv.innerHTML = "";
-                    return;
-                }
-            } catch (e) {}
-        }
-
-        if (urlInput.match(/\.(mp4|webm|ogg|mov)$/i) || urlInput.includes("video")) {
-            setupVideoPreview("https://api.allorigins.win/raw?url=" + encodeURIComponent(urlInput));
-            statusDiv.innerHTML = "";
-        } else {
-            setupImagePreview("https://api.allorigins.win/raw?url=" + encodeURIComponent(urlInput));
-            statusDiv.innerHTML = "";
-        }
+$('go').onclick=async()=>{
+  const fmt=$('fmt').value,win=openWindow();$('go').disabled=true;prog(0);
+  try{
+    const {w,h}=dims();
+    const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+    const ctx=cv.getContext('2d',{willReadFrequently:true});
+    if(fmt==='png'||fmt==='jpeg'){
+      setStatus('Capturing frame…');
+      if(mode==='video')await seek(+$('start').value);
+      if(fmt==='jpeg'){ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);}
+      ctx.drawImage(src(),0,0,w,h);
+      const blob=await new Promise(r=>cv.toBlob(r,'image/'+fmt,0.95));
+      if(!blob)throw new Error('Capture failed (the source may block cross-origin pixel access).');
+      return showResult(win,blob,`frame.${fmt==='jpeg'?'jpg':'png'}`);
     }
-
-    function setupVideoPreview(src) {
-        activeSourceType = 'video';
-        imgElem.style.display = 'none';
-        videoElem.style.display = 'block';
-        previewBox.style.display = 'block';
-        trimmerBox.style.display = 'block';
-
-        videoElem.crossOrigin = "anonymous";
-        videoElem.src = src;
-        videoElem.onloadedmetadata = function() {
-            videoDuration = videoElem.duration || 10;
-            const startSlider = document.getElementById('startSlider');
-            const endSlider = document.getElementById('endSlider');
-
-            startSlider.max = videoDuration;
-            endSlider.max = videoDuration;
-            startSlider.value = 0;
-            endSlider.value = Math.min(videoDuration, 3);
-
-            updateTrimRangeDisplay();
-        };
-
-        videoElem.onerror = function() {
-            statusDiv.innerHTML = "<span style='color: #ef4444;'>Stream restricted. Upload video file directly.</span>";
-        };
+    const fps=+$('fps').value,s=+$('start').value,e=+$('end').value;
+    let n=Math.max(1,Math.floor((e-s)*fps));
+    if(n>240){n=240;setStatus('Long clip: capped at 240 frames.');}
+    const delayFor=i=>fmt==='gif'?Math.round((i+1)*100/fps)-Math.round(i*100/fps):Math.round((i+1)*1000/fps)-Math.round(i*1000/fps);
+    const delays=[...Array(n)].map((_,i)=>Math.max(fmt==='gif'?2:1,delayFor(i)));
+    const frames=[];
+    for(let i=0;i<n;i++){
+      await seek(Math.min(e,s+i/fps));
+      ctx.drawImage(vid,0,0,w,h);
+      if(fmt==='gif')frames.push(quantize(ctx.getImageData(0,0,w,h).data,w,h));
+      else{const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(vid,0,0,w,h);frames.push(c);}
+      prog(i/n*0.85);setStatus(`Capturing frame ${i+1}/${n}…`);
+      if(i%4===0)await new Promise(r=>setTimeout(r));
     }
-
-    function setupImagePreview(src) {
-        activeSourceType = 'image';
-        videoElem.style.display = 'none';
-        imgElem.style.display = 'block';
-        previewBox.style.display = 'block';
-        trimmerBox.style.display = 'none';
-
-        imgElem.crossOrigin = "anonymous";
-        imgElem.src = src;
-    }
-
-    function handleStartSlider(val) {
-        let start = parseFloat(val);
-        let end = parseFloat(document.getElementById('endSlider').value);
-
-        if (start >= end) {
-            end = Math.min(videoDuration, start + 0.5);
-            document.getElementById('endSlider').value = end;
-        }
-
-        videoElem.currentTime = start;
-        updateTrimRangeDisplay();
-    }
-
-    function handleEndSlider(val) {
-        let end = parseFloat(val);
-        let start = parseFloat(document.getElementById('startSlider').value);
-
-        if (end <= start) {
-            start = Math.max(0, end - 0.5);
-            document.getElementById('startSlider').value = start;
-        }
-
-        videoElem.currentTime = end;
-        updateTrimRangeDisplay();
-    }
-
-    function updateTrimRangeDisplay() {
-        const start = parseFloat(document.getElementById('startSlider').value);
-        const end = parseFloat(document.getElementById('endSlider').value);
-        document.getElementById('timeRangeDisplay').innerText = start.toFixed(1) + 's - ' + end.toFixed(1) + 's';
-    }
-
-    function processAndExportMedia() {
-        if (!activeSourceType) {
-            alert('Please load a media source first!');
-            return;
-        }
-
-        const format = document.getElementById('exportFormat').value;
-        statusDiv.innerHTML = "<span style='color: var(--accent);'>Compiling high-framerate frames... Please wait.</span>";
-        outputContainer.style.display = "none";
-
-        const qualitySetting = document.getElementById('gifQuality').value;
-        const sourceWidth = activeSourceType === 'video' ? videoElem.videoWidth : imgElem.naturalWidth;
-        const sourceHeight = activeSourceType === 'video' ? videoElem.videoHeight : imgElem.naturalHeight;
-
-        let w, h;
-        if (qualitySetting === 'original' || !sourceWidth || !sourceHeight) {
-            w = sourceWidth || 480;
-            h = sourceHeight || 480;
-        } else {
-            const maxDim = parseInt(qualitySetting);
-            w = maxDim;
-            h = maxDim;
-            const ratio = sourceWidth / sourceHeight;
-            if (ratio > 1) {
-                h = Math.round(maxDim / ratio);
-            } else {
-                w = Math.round(maxDim * ratio);
-            }
-        }
-
-        if (format === 'png' || format === 'jpg') {
-            const canvas = document.createElement('canvas');
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-
-            if (activeSourceType === 'video') {
-                videoElem.currentTime = parseFloat(document.getElementById('startSlider').value);
-            }
-
-            setTimeout(() => {
-                const sourceEl = activeSourceType === 'video' ? videoElem : imgElem;
-                ctx.drawImage(sourceEl, 0, 0, w, h);
-                currentMimeType = format === 'png' ? 'image/png' : 'image/jpeg';
-                savedOutputData = canvas.toDataURL(currentMimeType, 0.95);
-
-                finalGifPreview.src = savedOutputData;
-                document.getElementById('outputLabel').innerText = "Preview Frame — Long-press to Save";
-                outputContainer.style.display = "block";
-                statusDiv.innerHTML = "<span style='color: var(--success);'>Frame captured successfully!</span>";
-            }, 300);
-            return;
-        }
-
-        currentMimeType = format === 'webp' ? 'image/webp' : 'image/gif';
-        
-        if (activeSourceType === 'video') {
-            const start = parseFloat(document.getElementById('startSlider').value);
-            const end = parseFloat(document.getElementById('endSlider').value);
-            const duration = Math.max(end - start, 0.5);
-            
-            // Selected FPS interval step
-            const intervalStep = parseFloat(document.getElementById('fpsSelector').value);
-            const calculatedFrames = Math.floor(duration / intervalStep);
-
-            gifshot.createGIF({
-                video: [videoElem.src],
-                offset: start,
-                numFrames: Math.min(calculatedFrames, 150),
-                interval: intervalStep,
-                gifWidth: w,
-                gifHeight: h,
-                keepAspectRatio: true,
-                numWorkers: 2
-            }, handleMediaResult);
-        } else {
-            gifshot.createGIF({
-                images: [imgElem.src],
-                interval: 0.05,
-                gifWidth: w,
-                gifHeight: h,
-                keepAspectRatio: true
-            }, handleMediaResult);
-        }
-    }
-
-    function handleMediaResult(obj) {
-        if (!obj.error && obj.image) {
-            statusDiv.innerHTML = "<span style='color: var(--success);'>Export compiled successfully!</span>";
-            savedOutputData = obj.image;
-            
-            finalGifPreview.src = obj.image;
-            document.getElementById('outputLabel').innerText = "Preview — Long-press to Save";
-            outputContainer.style.display = "block";
-        } else {
-            statusDiv.innerHTML = "<span style='color: #ef4444;'>Encoding failed. Adjust settings and retry.</span>";
-        }
-    }
-
-    function triggerDownload() {
-        if (!savedOutputData) return;
-        const win = window.open();
-        if (win) {
-            win.document.write('<body style="margin:0;background:#000;display:flex;justify-content:center;align-items:center;height:100vh;"><img src="' + savedOutputData + '" style="max-width:100%;max-height:100%;border-radius:8px;" /></body>');
-            win.document.title = "Kinetix Export — Long press to save";
-        }
-    }
+    setStatus('Encoding…');await new Promise(r=>setTimeout(r,30));
+    const blob=fmt==='gif'?encodeGIF(frames,w,h,delays):await encodeWebP(frames,w,h,delays);
+    showResult(win,blob,`clip.${fmt}`);
+  }catch(err){
+    if(win&&!win.closed)win.close();
+    setStatus('Error: '+(err.message||err)+(location.protocol==='file:'?'':''));$('go').disabled=false;
+  }
+};
 </script>
-
 </body>
 </html>
