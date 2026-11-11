@@ -259,7 +259,7 @@
 <div class="studio-card">
     <div class="header">
         <h1>Kinetix Studio</h1>
-        <p>Multi-Format Client-Side Converter</p>
+        <p>High-Framerate Client-Side Studio</p>
     </div>
     
     <div class="input-group">
@@ -313,13 +313,22 @@
             </select>
         </div>
         <div class="input-group">
-            <label for="gifQuality">Resolution Quality</label>
-            <select id="gifQuality">
-                <option value="original" selected>Original (Native)</option>
-                <option value="500">High (500px)</option>
-                <option value="720">Ultra HD (720px)</option>
+            <label for="fpsSelector">Framerate (FPS)</label>
+            <select id="fpsSelector">
+                <option value="0.04">Smooth (24 FPS)</option>
+                <option value="0.033" selected>Fluid (30 FPS)</option>
+                <option value="0.025">Ultra (40 FPS)</option>
             </select>
         </div>
+    </div>
+
+    <div class="input-group" style="margin-top: 12px;">
+        <label for="gifQuality">Resolution Quality</label>
+        <select id="gifQuality">
+            <option value="original" selected>Original (Native Sharpness)</option>
+            <option value="500">High (500px)</option>
+            <option value="720">Ultra HD (720px)</option>
+        </select>
     </div>
 
     <button class="btn-primary" style="margin-top: 8px;" onclick="processAndExportMedia()">Compile & Export</button>
@@ -476,7 +485,7 @@
         }
 
         const format = document.getElementById('exportFormat').value;
-        statusDiv.innerHTML = "<span style='color: var(--accent);'>Compiling full duration frames... Please wait.</span>";
+        statusDiv.innerHTML = "<span style='color: var(--accent);'>Compiling high-framerate frames... Please wait.</span>";
         outputContainer.style.display = "none";
 
         const qualitySetting = document.getElementById('gifQuality').value;
@@ -530,14 +539,15 @@
             const end = parseFloat(document.getElementById('endSlider').value);
             const duration = Math.max(end - start, 0.5);
             
-            // Dynamic frame allocation matching full trim duration
-            const calculatedFrames = Math.floor(duration * 10);
+            // Selected FPS interval step
+            const intervalStep = parseFloat(document.getElementById('fpsSelector').value);
+            const calculatedFrames = Math.floor(duration / intervalStep);
 
             gifshot.createGIF({
                 video: [videoElem.src],
                 offset: start,
-                numFrames: calculatedFrames,
-                interval: 0.1,
+                numFrames: Math.min(calculatedFrames, 150),
+                interval: intervalStep,
                 gifWidth: w,
                 gifHeight: h,
                 keepAspectRatio: true,
@@ -546,7 +556,7 @@
         } else {
             gifshot.createGIF({
                 images: [imgElem.src],
-                interval: 0.1,
+                interval: 0.05,
                 gifWidth: w,
                 gifHeight: h,
                 keepAspectRatio: true
