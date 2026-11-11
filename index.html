@@ -315,8 +315,8 @@
         <div class="input-group">
             <label for="gifQuality">Resolution Quality</label>
             <select id="gifQuality">
-                <option value="350">Standard (350px)</option>
-                <option value="500" selected>High (500px)</option>
+                <option value="original" selected>Original (Native)</option>
+                <option value="500">High (500px)</option>
                 <option value="720">Ultra HD (720px)</option>
             </select>
         </div>
@@ -479,15 +479,18 @@
         statusDiv.innerHTML = "<span style='color: var(--accent);'>Compiling full duration frames... Please wait.</span>";
         outputContainer.style.display = "none";
 
-        const maxDim = parseInt(document.getElementById('gifQuality').value);
-        let w = maxDim;
-        let h = maxDim;
-
-        const sourceEl = activeSourceType === 'video' ? videoElem : imgElem;
+        const qualitySetting = document.getElementById('gifQuality').value;
         const sourceWidth = activeSourceType === 'video' ? videoElem.videoWidth : imgElem.naturalWidth;
         const sourceHeight = activeSourceType === 'video' ? videoElem.videoHeight : imgElem.naturalHeight;
 
-        if (sourceWidth && sourceHeight) {
+        let w, h;
+        if (qualitySetting === 'original' || !sourceWidth || !sourceHeight) {
+            w = sourceWidth || 480;
+            h = sourceHeight || 480;
+        } else {
+            const maxDim = parseInt(qualitySetting);
+            w = maxDim;
+            h = maxDim;
             const ratio = sourceWidth / sourceHeight;
             if (ratio > 1) {
                 h = Math.round(maxDim / ratio);
@@ -507,6 +510,7 @@
             }
 
             setTimeout(() => {
+                const sourceEl = activeSourceType === 'video' ? videoElem : imgElem;
                 ctx.drawImage(sourceEl, 0, 0, w, h);
                 currentMimeType = format === 'png' ? 'image/png' : 'image/jpeg';
                 savedOutputData = canvas.toDataURL(currentMimeType, 0.95);
@@ -525,13 +529,15 @@
             const start = parseFloat(document.getElementById('startSlider').value);
             const end = parseFloat(document.getElementById('endSlider').value);
             const duration = Math.max(end - start, 0.5);
+            
+            // Dynamic frame allocation matching full trim duration
+            const calculatedFrames = Math.floor(duration * 10);
 
-            // Fixed stable frame rate interval to prevent mobile stalling/freezing
             gifshot.createGIF({
                 video: [videoElem.src],
                 offset: start,
-                numFrames: Math.min(Math.floor(duration * 12), 40),
-                interval: 0.08,
+                numFrames: calculatedFrames,
+                interval: 0.1,
                 gifWidth: w,
                 gifHeight: h,
                 keepAspectRatio: true,
