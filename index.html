@@ -9,7 +9,7 @@
         :root {
             --bg: #07080a;
             --surface: #12141c;
-            --surface-glass: rgba(18, 20, 28, 0.75);
+            --surface-glass: rgba(18, 20, 28, 0.85);
             --border: rgba(255, 255, 255, 0.08);
             --accent: #38bdf8;
             --accent-glow: rgba(56, 189, 248, 0.15);
@@ -313,11 +313,11 @@
             </select>
         </div>
         <div class="input-group">
-            <label for="gifQuality">Max Resolution</label>
+            <label for="gifQuality">Resolution Quality</label>
             <select id="gifQuality">
-                <option value="200">Compact (200px)</option>
-                <option value="350" selected>Optimal (350px)</option>
-                <option value="500">HD (500px)</option>
+                <option value="350">Standard (350px)</option>
+                <option value="500" selected>High (500px)</option>
+                <option value="720">Ultra HD (720px)</option>
             </select>
         </div>
     </div>
@@ -476,7 +476,7 @@
         }
 
         const format = document.getElementById('exportFormat').value;
-        statusDiv.innerHTML = "<span style='color: var(--accent);'>Compiling " + format.toUpperCase() + " format... Please wait.</span>";
+        statusDiv.innerHTML = "<span style='color: var(--accent);'>Compiling full duration frames... Please wait.</span>";
         outputContainer.style.display = "none";
 
         const maxDim = parseInt(document.getElementById('gifQuality').value);
@@ -496,7 +496,6 @@
             }
         }
 
-        // Handle Single Frame Formats (PNG / JPEG)
         if (format === 'png' || format === 'jpg') {
             const canvas = document.createElement('canvas');
             canvas.width = w;
@@ -510,7 +509,7 @@
             setTimeout(() => {
                 ctx.drawImage(sourceEl, 0, 0, w, h);
                 currentMimeType = format === 'png' ? 'image/png' : 'image/jpeg';
-                savedOutputData = canvas.toDataURL(currentMimeType, 0.9);
+                savedOutputData = canvas.toDataURL(currentMimeType, 0.95);
 
                 finalGifPreview.src = savedOutputData;
                 document.getElementById('outputLabel').innerText = "Preview Frame — Long-press to Save";
@@ -520,7 +519,6 @@
             return;
         }
 
-        // Handle Animated Formats (GIF / WebP)
         currentMimeType = format === 'webp' ? 'image/webp' : 'image/gif';
         
         if (activeSourceType === 'video') {
@@ -528,11 +526,12 @@
             const end = parseFloat(document.getElementById('endSlider').value);
             const duration = Math.max(end - start, 0.5);
 
+            // Fixed stable frame rate interval to prevent mobile stalling/freezing
             gifshot.createGIF({
                 video: [videoElem.src],
                 offset: start,
-                numFrames: Math.floor(duration * 10),
-                interval: 0.1,
+                numFrames: Math.min(Math.floor(duration * 12), 40),
+                interval: 0.08,
                 gifWidth: w,
                 gifHeight: h,
                 keepAspectRatio: true,
