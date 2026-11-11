@@ -37,6 +37,7 @@ input[type=range]{width:100%;accent-color:var(--a);margin:6px 0 0}
 .bar{height:6px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:12px}
 .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--a),var(--b));transition:width .15s}
 #status{color:var(--mute);font-size:13px;margin-top:8px;min-height:20px}
+.info{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:12px}.info div{background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}.info span{display:block;font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.08em}.info b{font-size:13px;font-weight:600;word-break:break-all}
 #modal{position:fixed;inset:0;background:rgba(0,0,0,.85);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);z-index:9;overflow:auto;padding:20px;text-align:center}
 #modal img{max-width:100%;border-radius:12px;-webkit-touch-callout:default}
 #modal p{color:var(--mute)}
@@ -56,10 +57,11 @@ input[type=range]{width:100%;accent-color:var(--a);margin:6px 0 0}
   <div class="card hidden" id="editor">
     <h2>2 · Preview &amp; Trim</h2>
     <div class="stage"><video id="vid" playsinline muted controls preload="auto" crossorigin="anonymous"></video><img id="imgPrev" class="hidden" alt=""></div>
+    <div class="info" id="info"></div>
     <div id="trim">
       <div class="sl"><label>Start <em id="sv">0.00s</em></label><input id="start" type="range" min="0" max="1" step="0.01" value="0"></div>
       <div class="sl"><label>End <em id="ev">0.00s</em></label><input id="end" type="range" min="0" max="1" step="0.01" value="1"></div>
-      <p class="sub" id="dur" style="margin-top:8px"></p>
+      
     </div>
   </div>
 
@@ -70,8 +72,10 @@ input[type=range]{width:100%;accent-color:var(--a);margin:6px 0 0}
       <div id="fpsBox"><label>Framerate</label><select id="fps"><option value="24">Smooth · 24 FPS</option><option value="30">Fluid · 30 FPS</option><option value="40">Ultra · 40 FPS</option></select></div>
       <div><label>Resolution</label><select id="res"><option value="0">Original (Native Sharpness)</option><option value="720">720px wide</option><option value="500">500px wide</option></select></div>
     </div>
-    <div class="row"><button id="go" style="width:100%">Compile &amp; Export</button></div>
-    <div class="bar"><i id="prog"></i></div><div id="status"></div>
+    <p class="sub" id="est" style="margin-top:12px"></p>
+    <div class="row" style="margin-top:6px"><button id="go" style="width:100%">Compile &amp; Export</button></div>
+    <button id="cancel" class="ghost hidden" style="width:100%;margin-top:8px">Cancel</button>
+    <div class="bar"><i id="prog"></i></div><div id="status"></div><div class="info" id="outinfo" style="margin-top:12px"></div>
   </div>
 </div>
 
@@ -81,7 +85,7 @@ input[type=range]{width:100%;accent-color:var(--a);margin:6px 0 0}
 const $=id=>document.getElementById(id);
 const vid=$('vid'),img=$('imgPrev');
 let mode=null; // 'video' | 'image'
-let objUrl=null;
+let objUrl=null,meta={};
 
 /* ---------- Ingestion ---------- */
 const drop=$('drop'),file=$('file');
@@ -95,12 +99,14 @@ function loadFile(f){
   if(objUrl)URL.revokeObjectURL(objUrl);
   objUrl=URL.createObjectURL(f);
   const isImg=f.type.startsWith('image/');
-  setSource(objUrl,isImg?'image':'video');
+  meta={name:f.name,type:f.type||'unknown',size:f.size,origin:'Local file'};setSource(objUrl,isImg?'image':'video');
 }
 $('loadUrl').onclick=()=>{
   const u=$('url').value.trim(); if(!u)return;
   const isImg=/\.(png|jpe?g|gif|webp|avif|bmp)(\?|#|$)/i.test(u);
+  meta={name:decodeURIComponent(u.split('?')[0].split('/').pop()||u),type:isImg?'image':'video',size:null,origin:'Remote URL'};
   setSource(u,isImg?'image':'video');
+  fetch(u,{method:'HEAD'}).then(r=>{const l=+r.headers.get('content-length'),t=r.headers.get('content-type');if(l)meta.size=l;if(t)meta.type=t;renderInfo();}).catch(()=>{});
 };
 function setSource(src,type){
   mode=type; $('editor').classList.remove('hidden'); $('export').classList.remove('hidden');
@@ -113,13 +119,14 @@ function setSource(src,type){
   if(v){vid.pause();vid.src=src;vid.load();}
   else{img.crossOrigin='anonymous';img.src=src;}
 }
+img.onload=()=>{renderInfo();updateEst();};
 img.onerror=vid.onerror=()=>setStatus('Could not load this media. For links, the host must allow cross-origin (CORS) access.');
 vid.onloadedmetadata=()=>{
   const d=vid.duration||0;
   [$('start'),$('end')].forEach(s=>{s.max=d;});
   $('start').value=0;$('end').value=Math.min(d,5)||d;
   syncLabels();vid.currentTime=0;
-  $('dur').textContent=`Source: ${vid.videoWidth}×${vid.videoHeight} · ${d.toFixed(2)}s`;
+  renderInfo();updateEst();
 };
 
 /* ---------- Trimmer ---------- */
@@ -154,22 +161,61 @@ function dims(){
 }
 const src=()=>mode==='video'?vid:img;
 
-/* ---------- GIF encoder (216-colour palette + Floyd–Steinberg) ---------- */
-function quantize(data,w,h){
-  const f=new Float32Array(data.length);for(let i=0;i<data.length;i++)f[i]=data[i];
-  const out=new Uint8Array(w*h);
+/* ---------- Info ---------- */
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtB=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(2)+' MB';
+const fmtT=s=>{const m=Math.floor(s/60);return (m?m+'m ':'')+(s-m*60).toFixed(2)+'s'};
+const gcd=(a,b)=>b?gcd(b,a%b):a;
+const kv=o=>Object.entries(o).filter(([,v])=>v!=null&&v!=='').map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join('');
+function renderInfo(){
+  if(!mode)return;const v=mode==='video';
+  const W=v?vid.videoWidth:img.naturalWidth,H=v?vid.videoHeight:img.naturalHeight,d=v?vid.duration:0,g=W&&H?gcd(W,H):1;
+  $('info').innerHTML=kv({Name:esc(meta.name||'media'),Source:meta.origin,Type:esc(meta.type||'unknown'),
+    'File size':meta.size!=null?fmtB(meta.size):'Unknown (remote)',Dimensions:W?`${W} × ${H}px`:'',Ratio:W?`${W/g}:${H/g}`:'',
+    Megapixels:W?(W*H/1e6).toFixed(2)+' MP':'',Duration:v&&d?fmtT(d):'',
+    'Avg bitrate':v&&d&&meta.size?((meta.size*8/d)/1e6).toFixed(2)+' Mbps':''});
+}
+function updateEst(){
+  if(!mode)return;const v=mode==='video';
+  if(!(v?vid.videoWidth:img.naturalWidth))return;
+  const f=$('fmt').value,{w,h}=dims();
+  if(!v||f==='png'||f==='jpeg'){$('est').textContent=`Output: 1 still · ${w} × ${h}px`;return;}
+  const fps=+$('fps').value,len=Math.max(0,$('end').value-$('start').value),n=Math.max(1,Math.floor(len*fps));
+  $('est').textContent=`Output: ${n} frames · ${w} × ${h}px · ${len.toFixed(2)}s`+(n*w*h>3e8?' · ⚠ heavy export, may take a while (streams to stay memory-safe)':'');
+}
+['start','end','fps','res','fmt'].forEach(id=>['input','change'].forEach(e=>$(id).addEventListener(e,updateEst)));
+
+/* ---------- Byte writer (typed, growable: no giant JS arrays) ---------- */
+class BW{
+  constructor(n=65536){this.b=new Uint8Array(n);this.n=0}
+  ensure(k){if(this.n+k>this.b.length){let m=this.b.length*2;while(m<this.n+k)m*=2;const nb=new Uint8Array(m);nb.set(this.b.subarray(0,this.n));this.b=nb}}
+  u8(v){this.ensure(1);this.b[this.n++]=v}
+  u16(v){this.u8(v&255);this.u8(v>>8&255)}
+  u24(v){this.u16(v&65535);this.u8(v>>16&255)}
+  u32(v){this.u16(v&65535);this.u16(v>>>16&65535)}
+  raw(a){this.ensure(a.length);this.b.set(a,this.n);this.n+=a.length}
+  str(s){for(let i=0;i<s.length;i++)this.u8(s.charCodeAt(i))}
+  out(){return this.b.slice(0,this.n)}
+}
+
+/* ---------- GIF (streamed per-frame; 216-colour palette) ---------- */
+function quantize(data,w,h,out,f){
+  if(!f){for(let i=0,p=0;i<w*h;i++,p+=4)out[i]=Math.round(data[p]/51)*36+Math.round(data[p+1]/51)*6+Math.round(data[p+2]/51);return;}
+  f.set(data);
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-    const p=(y*w+x)*4,q=[0,0,0],lv=[0,0,0];
-    for(let c=0;c<3;c++){const v=Math.max(0,Math.min(255,f[p+c]));const l=Math.round(v/51);lv[c]=l;q[c]=v-l*51;}
-    out[y*w+x]=lv[0]*36+lv[1]*6+lv[2];
-    const sp=(dx,dy,k)=>{const xx=x+dx,yy=y+dy;if(xx<0||xx>=w||yy>=h)return;const pp=(yy*w+xx)*4;for(let c=0;c<3;c++)f[pp+c]+=q[c]*k;};
-    sp(1,0,7/16);sp(-1,1,3/16);sp(0,1,5/16);sp(1,1,1/16);
+    const p=(y*w+x)*4;let r=0;
+    for(let c=0;c<3;c++){
+      const v=f[p+c]<0?0:f[p+c]>255?255:f[p+c],l=Math.round(v/51),e=v-l*51;
+      r=r*6+l;
+      if(x+1<w)f[p+4+c]+=e*7/16;
+      if(y+1<h){if(x>0)f[p+4*w-4+c]+=e*3/16;f[p+4*w+c]+=e*5/16;if(x+1<w)f[p+4*w+4+c]+=e/16;}
+    }
+    out[y*w+x]=r;
   }
-  return out;
 }
 function lzw(idx){
-  const out=[];let cur=0,bits=0,size=9,next=258,dict=new Map();
-  const emit=c=>{cur|=c<<bits;bits+=size;while(bits>=8){out.push(cur&255);cur>>=8;bits-=8;}};
+  const o=new BW((idx.length>>2)+1024);let cur=0,bits=0,size=9,next=258,dict=new Map();
+  const emit=c=>{cur|=c<<bits;bits+=size;while(bits>=8){o.u8(cur&255);cur>>=8;bits-=8;}};
   emit(256);let pre=idx[0];
   for(let i=1;i<idx.length;i++){
     const k=idx[i],key=pre*256+k,g=dict.get(key);
@@ -179,113 +225,114 @@ function lzw(idx){
     if(next===4096){emit(256);dict.clear();next=258;size=9;}
     pre=k;
   }
-  emit(pre);emit(257);if(bits>0)out.push(cur&255);
-  return out;
+  emit(pre);emit(257);if(bits>0)o.u8(cur&255);
+  return o.out();
 }
-function encodeGIF(frames,w,h,delays){
-  const b=[];const w16=n=>b.push(n&255,n>>8&255);
-  [..."GIF89a"].forEach(c=>b.push(c.charCodeAt(0)));
-  w16(w);w16(h);b.push(0xF7,0,0);
-  for(let r=0;r<6;r++)for(let g=0;g<6;g++)for(let bl=0;bl<6;bl++)b.push(r*51,g*51,bl*51);
-  for(let i=216;i<256;i++)b.push(0,0,0);
-  b.push(0x21,0xFF,11,..."NETSCAPE2.0".split('').map(c=>c.charCodeAt(0)),3,1,0,0,0);
-  frames.forEach((fr,i)=>{
-    b.push(0x21,0xF9,4,0,delays[i]&255,delays[i]>>8,0,0);
-    b.push(0x2C);w16(0);w16(0);w16(w);w16(h);b.push(0,8);
-    const d=lzw(fr);for(let p=0;p<d.length;p+=255){const n=Math.min(255,d.length-p);b.push(n);for(let j=0;j<n;j++)b.push(d[p+j]);}
-    b.push(0);
-  });
-  b.push(0x3B);
-  return new Blob([new Uint8Array(b)],{type:'image/gif'});
+function gifHeader(w,h){
+  const b=new BW(1024);b.str('GIF89a');b.u16(w);b.u16(h);b.raw([0xF7,0,0]);
+  for(let r=0;r<6;r++)for(let g=0;g<6;g++)for(let c=0;c<6;c++)b.raw([r*51,g*51,c*51]);
+  for(let i=216;i<256;i++)b.raw([0,0,0]);
+  b.raw([0x21,0xFF,11]);b.str('NETSCAPE2.0');b.raw([3,1,0,0,0]);
+  return b.out();
+}
+function gifFrame(idx,w,h,delay){
+  const d=lzw(idx),b=new BW(d.length+(d.length/255|0)+64);
+  b.raw([0x21,0xF9,4,0]);b.u16(delay);b.raw([0,0]);
+  b.u8(0x2C);b.u16(0);b.u16(0);b.u16(w);b.u16(h);b.raw([0,8]);
+  for(let p=0;p<d.length;p+=255){const n=Math.min(255,d.length-p);b.u8(n);b.raw(d.subarray(p,p+n));}
+  b.u8(0);return b.out();
 }
 
-/* ---------- Animated WebP muxer ---------- */
-const u24=n=>[n&255,n>>8&255,n>>16&255],u32=n=>[n&255,n>>8&255,n>>16&255,n>>24&255];
-const tag=s=>[...s].map(c=>c.charCodeAt(0));
-function chunk(t,data){const a=[...tag(t),...u32(data.length),...data];if(data.length&1)a.push(0);return a;}
-async function encodeWebP(canvases,w,h,delays){
-  const parts=[];
-  for(let i=0;i<canvases.length;i++){
-    const blob=await new Promise(r=>canvases[i].toBlob(r,'image/webp',0.92));
-    if(!blob||blob.type!=='image/webp')throw new Error('This browser cannot encode WebP. Try Chrome, Edge or Firefox, or choose GIF.');
-    const buf=new Uint8Array(await blob.arrayBuffer());
-    let off=12,inner=[];
-    while(off<buf.length){
-      const t=String.fromCharCode(...buf.slice(off,off+4));
-      const len=buf[off+4]|buf[off+5]<<8|buf[off+6]<<16|buf[off+7]<<24;
-      const total=8+len+(len&1);
-      if(t!=='VP8X')inner.push(...buf.slice(off,off+total));
-      off+=total;
-    }
-    parts.push(chunk('ANMF',[...u24(0),...u24(0),...u24(w-1),...u24(h-1),...u24(delays[i]),0,...inner]));
+/* ---------- Animated WebP (streamed per-frame) ---------- */
+async function webpFrame(cv,w,h,dur){
+  const blob=await new Promise(r=>cv.toBlob(r,'image/webp',0.92));
+  if(!blob||blob.type!=='image/webp')throw new Error('This browser cannot encode WebP. Use Chrome, Edge or Firefox, or choose GIF.');
+  const buf=new Uint8Array(await blob.arrayBuffer()),inner=[];let off=12;
+  while(off+8<=buf.length){
+    const t=String.fromCharCode(buf[off],buf[off+1],buf[off+2],buf[off+3]),len=(buf[off+4]|buf[off+5]<<8|buf[off+6]<<16|buf[off+7]<<24)>>>0,total=8+len+(len&1);
+    if(t!=='VP8X')inner.push(buf.subarray(off,Math.min(off+total,buf.length)));
+    off+=total;
   }
-  const body=[...tag('WEBP'),...chunk('VP8X',[0x12,0,0,0,...u24(w-1),...u24(h-1)]),...chunk('ANIM',[255,255,255,255,0,0])];
-  const all=[...tag('RIFF'),...u32(0),...body];
-  const bytes=new Uint8Array(all.length+parts.reduce((s,p)=>s+p.length,0));
-  bytes.set(all);let o=all.length;parts.forEach(p=>{bytes.set(p,o);o+=p.length;});
-  new DataView(bytes.buffer).setUint32(4,bytes.length-8,true);
-  return new Blob([bytes],{type:'image/webp'});
+  const il=inner.reduce((s,a)=>s+a.length,0),pl=16+il,b=new BW(pl+16);
+  b.str('ANMF');b.u32(pl);b.u24(0);b.u24(0);b.u24(w-1);b.u24(h-1);b.u24(dur);b.u8(0);
+  inner.forEach(a=>b.raw(a));if(pl&1)b.u8(0);
+  return b.out();
+}
+function webpHeader(w,h,total){
+  const b=new BW(64);b.str('RIFF');b.u32(4+18+14+total);b.str('WEBP');
+  b.str('VP8X');b.u32(10);b.raw([0x12,0,0,0]);b.u24(w-1);b.u24(h-1);
+  b.str('ANIM');b.u32(6);b.raw([255,255,255,255,0,0]);
+  return b.out();
 }
 
 /* ---------- Export ---------- */
 function openWindow(){let w=null;try{w=window.open('','_blank');}catch(e){}
   if(w){w.document.write('<body style="background:#0b0c10;color:#8b90a0;font:16px -apple-system,sans-serif;text-align:center;padding:40px">Compiling…</body>');}
   return w;}
-function showResult(win,blob,name){
-  const fr=new FileReader();
-  fr.onload=()=>{
-    const url=fr.result;
-    const html=`<meta name="viewport" content="width=device-width,initial-scale=1"><title>${name}</title>
+let outUrl=null,cancel=false;
+function showResult(win,blob,name,info){
+  if(outUrl)URL.revokeObjectURL(outUrl);
+  const url=outUrl=URL.createObjectURL(blob);
+  $('outinfo').innerHTML=kv(info);
+  const rows=Object.entries(info).map(([k,v])=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid #222"><span style="color:#8b90a0">${k}</span><b>${v}</b></div>`).join('');
+  const html=`<meta name="viewport" content="width=device-width,initial-scale=1"><title>${name}</title>
 <body style="margin:0;background:#0b0c10;color:#e8eaf0;font:15px -apple-system,sans-serif;text-align:center;padding:20px">
 <p style="color:#22d3ee;font-weight:600">Your export is ready</p>
 <img src="${url}" style="max-width:100%;border-radius:12px;-webkit-touch-callout:default" alt="${name}">
-<p style="color:#8b90a0">📱 Long-press the image → <b>Save to Photos</b> / <b>Save to Files</b><br>
-🖥 Desktop: <a style="color:#7c5cff" href="${url}" download="${name}">Download file</a></p></body>`;
-    if(win&&!win.closed){win.document.open();win.document.write(html);win.document.close();}
-    else{const m=$('modal');m.classList.remove('hidden');
-      m.innerHTML=`<p style="color:#22d3ee;font-weight:600">Your export is ready</p><img src="${url}" alt=""><p>Long-press the image → Save to Photos / Files<br><a style="color:#7c5cff" href="${url}" download="${name}">Download file</a></p><button id="cl" class="ghost">Close</button>`;
-      $('cl').onclick=()=>m.classList.add('hidden');}
-    setStatus(`Done · ${(blob.size/1024).toFixed(0)} KB`);prog(1);$('go').disabled=false;
-  };
-  fr.readAsDataURL(blob);
+<p style="color:#8b90a0">📱 Long-press the image → <b>Save to Photos</b> / <b>Save to Files</b><br>🖥 Desktop: <a style="color:#7c5cff" href="${url}" download="${name}">Download file</a></p>
+<div style="max-width:420px;margin:0 auto;text-align:left;font-size:14px">${rows}</div></body>`;
+  if(win&&!win.closed){win.document.open();win.document.write(html);win.document.close();}
+  else{const m=$('modal');m.classList.remove('hidden');
+    m.innerHTML=`<p style="color:#22d3ee;font-weight:600">Your export is ready</p><img src="${url}" alt=""><p>Long-press the image → Save to Photos / Files<br><a style="color:#7c5cff" href="${url}" download="${name}">Download file</a></p><button id="cl" class="ghost">Close</button>`;
+    $('cl').onclick=()=>m.classList.add('hidden');}
+  setStatus(`Done · ${fmtB(blob.size)}`);prog(1);
 }
-
+$('cancel').onclick=()=>{cancel=true;setStatus('Cancelling…')};
 $('go').onclick=async()=>{
-  const fmt=$('fmt').value,win=openWindow();$('go').disabled=true;prog(0);
+  const fmt=$('fmt').value,win=openWindow(),t0=performance.now();cancel=false;
+  $('go').disabled=true;$('cancel').classList.remove('hidden');prog(0);$('outinfo').innerHTML='';
   try{
-    const {w,h}=dims();
-    const cv=document.createElement('canvas');cv.width=w;cv.height=h;
-    const ctx=cv.getContext('2d',{willReadFrequently:true});
+    const {w,h}=dims(),cv=document.createElement('canvas');cv.width=w;cv.height=h;
+    const ctx=cv.getContext('2d',{willReadFrequently:fmt==='gif'});
+    let blob,info,name;
     if(fmt==='png'||fmt==='jpeg'){
       setStatus('Capturing frame…');
       if(mode==='video')await seek(+$('start').value);
       if(fmt==='jpeg'){ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);}
       ctx.drawImage(src(),0,0,w,h);
-      const blob=await new Promise(r=>cv.toBlob(r,'image/'+fmt,0.95));
-      if(!blob)throw new Error('Capture failed (the source may block cross-origin pixel access).');
-      return showResult(win,blob,`frame.${fmt==='jpeg'?'jpg':'png'}`);
+      blob=await new Promise(r=>cv.toBlob(r,'image/'+fmt,0.95));
+      if(!blob)throw new Error('Capture failed (the source may block cross-origin pixel access, or the image is too large for this device).');
+      name=`frame.${fmt==='jpeg'?'jpg':'png'}`;
+      info={Format:fmt.toUpperCase(),Dimensions:`${w} × ${h}px`,'File size':fmtB(blob.size),'Time taken':((performance.now()-t0)/1000).toFixed(1)+'s'};
+    }else{
+      const fps=+$('fps').value,s=+$('start').value,e=+$('end').value,n=Math.max(1,Math.floor((e-s)*fps));
+      const cs=i=>Math.max(2,Math.round((i+1)*100/fps)-Math.round(i*100/fps));
+      const ms=i=>Math.max(1,Math.round((i+1)*1000/fps)-Math.round(i*1000/fps));
+      const parts=[];let bytes=0;
+      const idx=fmt==='gif'?new Uint8Array(w*h):null,fb=fmt==='gif'&&w*h<=1.5e6?new Float32Array(w*h*4):null;
+      if(fmt==='gif')parts.push(gifHeader(w,h));
+      for(let i=0;i<n;i++){
+        if(cancel)throw new Error('Cancelled');
+        await seek(Math.min(e,s+i/fps));ctx.drawImage(vid,0,0,w,h);
+        let p;
+        if(fmt==='gif'){quantize(ctx.getImageData(0,0,w,h).data,w,h,idx,fb);p=gifFrame(idx,w,h,cs(i));}
+        else p=await webpFrame(cv,w,h,ms(i));
+        parts.push(p);bytes+=p.length;
+        prog((i+1)/n*0.97);setStatus(`Frame ${i+1}/${n} · ${fmtB(bytes)} so far`);
+        await new Promise(r=>setTimeout(r));
+      }
+      if(fmt==='gif'){parts.push(new Uint8Array([0x3B]));blob=new Blob(parts,{type:'image/gif'});}
+      else blob=new Blob([webpHeader(w,h,bytes),...parts],{type:'image/webp'});
+      name=`clip.${fmt}`;
+      info={Format:fmt==='gif'?'Animated GIF':'Animated WebP',Dimensions:`${w} × ${h}px`,Frames:n,Framerate:fps+' FPS',Duration:fmtT(n/fps),
+        'File size':fmtB(blob.size),'vs source':meta.size?(blob.size/meta.size*100).toFixed(0)+'% of original':'',
+        'Time taken':((performance.now()-t0)/1000).toFixed(1)+'s'};
     }
-    const fps=+$('fps').value,s=+$('start').value,e=+$('end').value;
-    let n=Math.max(1,Math.floor((e-s)*fps));
-    if(n>240){n=240;setStatus('Long clip: capped at 240 frames.');}
-    const delayFor=i=>fmt==='gif'?Math.round((i+1)*100/fps)-Math.round(i*100/fps):Math.round((i+1)*1000/fps)-Math.round(i*1000/fps);
-    const delays=[...Array(n)].map((_,i)=>Math.max(fmt==='gif'?2:1,delayFor(i)));
-    const frames=[];
-    for(let i=0;i<n;i++){
-      await seek(Math.min(e,s+i/fps));
-      ctx.drawImage(vid,0,0,w,h);
-      if(fmt==='gif')frames.push(quantize(ctx.getImageData(0,0,w,h).data,w,h));
-      else{const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(vid,0,0,w,h);frames.push(c);}
-      prog(i/n*0.85);setStatus(`Capturing frame ${i+1}/${n}…`);
-      if(i%4===0)await new Promise(r=>setTimeout(r));
-    }
-    setStatus('Encoding…');await new Promise(r=>setTimeout(r,30));
-    const blob=fmt==='gif'?encodeGIF(frames,w,h,delays):await encodeWebP(frames,w,h,delays);
-    showResult(win,blob,`clip.${fmt}`);
+    showResult(win,blob,name,info);
   }catch(err){
     if(win&&!win.closed)win.close();
-    setStatus('Error: '+(err.message||err)+(location.protocol==='file:'?'':''));$('go').disabled=false;
-  }
+    setStatus(err.message==='Cancelled'?'Cancelled.':'Error: '+(err.message||err));prog(0);
+  }finally{$('go').disabled=false;$('cancel').classList.add('hidden');}
 };
 </script>
 </body>
