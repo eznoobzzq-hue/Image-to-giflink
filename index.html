@@ -65,7 +65,6 @@
 
         video, img { max-width: 100%; max-height: 220px; display: block; margin: 0 auto; }
 
-        /* iOS Trimmer Slider Control */
         .ios-trimmer {
             background: #0f172a;
             border: 1px solid var(--border-color);
@@ -82,37 +81,6 @@
             color: #cbd5e1;
             margin-bottom: 8px;
             font-weight: 500;
-        }
-
-        .range-slider-wrapper {
-            position: relative;
-            height: 36px;
-            margin-bottom: 6px;
-        }
-
-        .range-slider-wrapper input[type="range"] {
-            position: absolute;
-            width: 100%;
-            background: none;
-            pointer-events: auto;
-            appearance: none;
-            -webkit-appearance: none;
-            margin: 0;
-            top: 6px;
-            left: 0;
-            z-index: 2;
-        }
-
-        .range-slider-wrapper input[type="range"]::-webkit-slider-thumb {
-            appearance: none;
-            -webkit-appearance: none;
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            background: #3b82f6;
-            cursor: pointer;
-            border: 2px solid #fff;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
         }
 
         .editor-grid {
@@ -167,7 +135,7 @@
     <h2>Local GIF Studio</h2>
     
     <div class="input-group">
-        <label>Upload Video or Image File (Recommended for X/Protected links)</label>
+        <label>Upload Video or Image File</label>
         <input type="file" id="fileInput" accept="video/*,image/*">
     </div>
 
@@ -227,7 +195,7 @@
     <div id="status"></div>
 
     <div id="outputGifContainer">
-        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">Long-press image to Save to Photos</p>
+        <p style="font-size: 12px; color: #94a3b8; margin-bottom: 8px;">Long-press image to Save to Photos or tap button below</p>
         <img id="finalGifPreview" style="max-width: 100%; border-radius: 8px;">
         <button id="downloadBtn" class="download-btn" onclick="triggerDownload()">Save GIF to Device</button>
     </div>
@@ -236,7 +204,7 @@
 <script>
     let activeSourceType = null;
     let videoDuration = 0;
-    let generatedBlobUrl = null;
+    let savedBase64Data = null;
     const videoElem = document.getElementById('videoElement');
     const imgElem = document.getElementById('imageElement');
     const previewBox = document.getElementById('previewContainer');
@@ -316,7 +284,7 @@
         };
 
         videoElem.onerror = function() {
-            statusDiv.innerHTML = "<p style='color: #ef4444;'>Stream restricted by platform. Try uploading the video file directly from your device.</p>";
+            statusDiv.innerHTML = "<p style='color: #ef4444;'>Stream restricted. Upload video file directly from your device.</p>";
         };
     }
 
@@ -409,31 +377,64 @@
     function handleGifResult(obj) {
         if (!obj.error && obj.image) {
             statusDiv.innerHTML = "<p style='color: #34d399;'>GIF successfully created!</p>";
+            savedBase64Data = obj.image;
             
-            // Convert Base64 Data URI to Blob for iOS download compatibility
-            fetch(obj.image)
-                .then(res => res.blob())
-                .then(blob => {
-                    if (generatedBlobUrl) URL.revokeObjectURL(generatedBlobUrl);
-                    generatedBlobUrl = URL.createObjectURL(blob);
-                    
-                    finalGifPreview.src = obj.image;
-                    outputContainer.style.display = "block";
-                    downloadBtn.style.display = "block";
-                });
+            finalGifPreview.src = obj.image;
+            outputContainer.style.display = "block";
+            downloadBtn.style.display = "block";
         } else {
-            statusDiv.innerHTML = "<p style='color: #ef4444;'>Encoding failed. Try adjusting trim range or resolution.</p>";
+            statusDiv.innerHTML = "<p style='color: #ef4444;'>Encoding failed. Try adjusting trim range.</p>";
         }
     }
 
-    function triggerDownload() {
-        if (!generatedBlobUrl) return;
-        const a = document.createElement('a');
-        a.href = generatedBlobUrl;
-        a.download = 'local_creation.gif';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+    async function triggerDownload() {
+        if (!savedBase64Data) return;
+
+        try {
+            // Convert Base64 data string to a clean binary Blob
+            const arr = savedBase64Data.split(',');
+            const mime = arr[0].match(/:(.*?);/)[1];
+            const bstr = atob(arr[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            const blob = new Blob([u8arr], { type: mime });
+
+            // Direct File System Access API (Works on modern browsers / Chrome / Edge)
+            if (window.showSaveFilePicker) {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: 'local_creation.gif',
+                    types: [{
+                        description: 'GIF Image',
+                        accept: { 'image/gif': ['.gif'] },
+                    }],
+                });
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                return;
+            }
+
+            // iOS Safari & Mobile Fallback: Direct Anchor Download using Object URL
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = blobUrl;
+            a.download = 'local_creation.gif';
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(blobUrl);
+            }, 1000);
+
+        } catch (err) {
+            // Fallback if user cancels picker or download stream errors
+            console.log("Download action completed or dismissed.");
+        }
     }
 </script>
 
